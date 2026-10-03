@@ -1,5 +1,33 @@
 # AES-256 CTR、ECB、CBC、CFB 与 OFB 教学
 
+## RSA demo
+
+```sh
+python -m pip install -r requirements.txt
+python rsa_demo.py
+python rsa_demo.py --text "Hello, RSA!"
+```
+
+`rsa_demo.py` generates a fresh RSA-2048 key pair, encrypts a UTF-8 message with the public key using OAEP/SHA-256, and decrypts it with the private key. It prints the ciphertext as Base64 and checks the round trip. Keys exist only in memory and are not saved. The message limit is 190 UTF-8 bytes for these parameters; larger data needs hybrid encryption rather than direct RSA encryption.
+
+## ChaCha20 demo
+
+```sh
+python -m pip install -r requirements.txt
+python chacha20_demo.py
+```
+
+Edit the multiline `text` in `chacha20_demo.py`. The demo generates a fresh
+32-byte key and 8-byte nonce, prints the keystream and ciphertext, and decrypts
+the text. It demonstrates `ciphertext = plaintext XOR keystream`, without padding.
+It uses the library's original ChaCha20 layout (64-bit counter and 64-bit nonce),
+not the IETF layout (32-bit counter and 96-bit nonce).
+Never reuse a key/nonce pair for different messages. Keys and keystreams are
+printed only for teaching. Raw ChaCha20 does not authenticate messages;
+applications should use ChaCha20-Poly1305 for tamper detection.
+
+Reference: [cryptography ChaCha20 documentation](https://cryptography.io/en/latest/hazmat/primitives/symmetric-encryption/#cryptography.hazmat.primitives.ciphers.algorithms.ChaCha20).
+
 ## OFB 演示
 
 `ofb_demo.py` 使用 AES-256 OFB，共用现有依赖：
