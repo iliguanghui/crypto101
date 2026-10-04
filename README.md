@@ -127,3 +127,19 @@ AES-256 的密钥为 32 字节，但 AES 分组始终为 16 字节。CTR 加解�
 自检包含 NIST 四块已知答案，以及空输入、短块、整块、进位和溢出边界。
 
 参考：[cryptography 官方文档](https://cryptography.io/en/latest/hazmat/primitives/symmetric-encryption/)、[NIST SP 800-38A F.5.5](https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf)。
+
+## Argon2 演示与测试向量验证
+
+`argon2_demo.py` 与 `verify_argon2.py` 实现了 RFC 9106 定义的 Argon2 内存硬哈希算法（版本 1.3，`0x13`），包含全部三种变体：
+- **Argon2d**（Type 0）：数据依赖寻址，适合抗 GPU 挖矿与不需要防御侧信道计时的场景。
+- **Argon2i**（Type 1）：数据无关寻址，适合密码哈希与基于密码的密钥派生（防御基于缓存/计时的侧信道攻击）。
+- **Argon2id**（Type 2）：混合模式（第 0 轮前半段采用 Argon2i，其余采用 Argon2d），RFC 9106 首选推荐方案。
+
+仅使用 Python 标准库（`hashlib.blake2b` 与 `math`），无第三方依赖。
+
+```powershell
+python argon2_demo.py
+python verify_argon2.py
+```
+
+支持输出预哈希摘要 $H_0$、每轮结束时首尾内存块、最终异或块 $C$ 与输出标签（Tag），严格通过 RFC 9106 第 5 节全部测试向量。代码及 API 统一遵循标准 Python 蛇形命名（`password`、`salt`、`parallelism`、`tag_length`、`memory_size_kb`、`iterations`、`version`、`key`、`associated_data`、`hash_type`）。
