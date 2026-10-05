@@ -143,3 +143,17 @@ python verify_argon2.py
 ```
 
 支持输出预哈希摘要 $H_0$、每轮结束时首尾内存块、最终异或块 $C$ 与输出标签（Tag），严格通过 RFC 9106 第 5 节全部测试向量。代码及 API 统一遵循标准 Python 蛇形命名（`password`、`salt`、`parallelism`、`tag_length`、`memory_size_kb`、`iterations`、`version`、`key`、`associated_data`、`hash_type`）。
+
+## MD5 演示与测试向量验证
+
+`md5_demo.py` 与 `verify_md5.py` 实现了 RFC 1321 与 Wikipedia 算法伪代码定义的 MD5 消息摘要算法（128 位）：
+- **设计目标**：代码直观清晰，仅使用 Python 原生数据类型（整数、字节串、字节数组），不依赖任何第三方库；
+- **分步封装**：清晰封装了填充处理（`pad_message`）、非线性辅助函数（`f_func`、`g_func`、`h_func`、`i_func`）、512 位分组压缩处理（`process_block`）及摘要生成（`md5`、`md5_hex`）；
+- **过程可视化**：支持在终端打印原始消息长度、填充细节、每组 16 个 32 位小端字 $M[0..15]$、每轮（Round 1..4）寄存器中间状态及最终累加器值；
+- **规范与测试**：统一遵循 Python 蛇形命名规范，严格通过 RFC 1321 第 A.5 节官方全部 7 个测试向量、Wikipedia 测试向量及各种边界长度测试。
+
+```powershell
+python md5_demo.py
+python md5_demo.py --text "The quick brown fox jumps over the lazy dog"
+python verify_md5.py
+```
