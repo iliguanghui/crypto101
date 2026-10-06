@@ -26,14 +26,14 @@ import argparse
 from typing import List, Tuple, Union
 
 # ==============================================================================
-# Constants (RFC 3174 Section 5 & Wikipedia)
+# Constants (RFC 3174 Section 5, 6.1 & Wikipedia)
 # ==============================================================================
 
 # 32-bit and 64-bit integer masks
 MASK_32: int = 0xFFFFFFFF
 MASK_64: int = 0xFFFFFFFFFFFFFFFF
 
-# Initial 32-bit hash values (RFC 3174 Section 5)
+# Initial 32-bit hash values (RFC 3174 Section 6.1)
 # [Difference from MD5]:
 #   - MD5 uses 4 32-bit state words (128 bits total): A, B, C, D.
 #   - SHA-1 uses 5 32-bit state words (160 bits total): H0, H1, H2, H3, H4.

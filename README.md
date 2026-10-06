@@ -32,7 +32,7 @@ Reference: [cryptography ChaCha20 documentation](https://cryptography.io/en/late
 
 `ofb_demo.py` 使用 AES-256 OFB，共用现有依赖：
 
-```powershell
+```sh
 python -m pip install -r requirements.txt
 python ofb_demo.py
 python ofb_demo.py --text "我正在学习 OFB 模式"
@@ -51,7 +51,7 @@ python ofb_demo.py --self-test
 
 `cfb_demo.py` 使用 AES-256 CFB-128，共用现有依赖：
 
-```powershell
+```sh
 python -m pip install -r requirements.txt
 python cfb_demo.py
 python cfb_demo.py --text "我正在学习 CFB 模式"
@@ -72,7 +72,7 @@ python cfb_demo.py --self-test
 
 `cbc_demo.py` 是独立的 AES-256 CBC 教学脚本，共用现有依赖：
 
-```powershell
+```sh
 python -m pip install -r requirements.txt
 python cbc_demo.py
 python cbc_demo.py --text "我正在学习 CBC 模式"
@@ -89,7 +89,7 @@ CBC 本身不提供完整性保护，填充校验也不能替代认证。脚本�
 
 新增 `ecb_demo.py`，与 CTR 脚本共用依赖：
 
-```powershell
+```sh
 python -m pip install -r requirements.txt
 python ecb_demo.py
 python ecb_demo.py --text "我正在学习 ECB 模式"
@@ -107,7 +107,7 @@ ECB 不使用 IV 或计数器，会暴露重复模式，也不提供完整性保
 
 使用 Python 3.8 或更新版本，在项目目录运行：
 
-```powershell
+```sh
 python -m pip install -r requirements.txt
 python ctr_demo.py
 python ctr_demo.py --text "我正在学习 CTR 模式"
@@ -137,7 +137,7 @@ AES-256 的密钥为 32 字节，但 AES 分组始终为 16 字节。CTR 加解�
 
 仅使用 Python 标准库（`hashlib.blake2b` 与 `math`），无第三方依赖。
 
-```powershell
+```sh
 python argon2_demo.py
 python verify_argon2.py
 ```
@@ -152,7 +152,7 @@ python verify_argon2.py
 - **过程可视化**：支持在终端打印原始消息长度、填充细节、每组 16 个 32 位小端字 $M[0..15]$、每轮（Round 1..4）寄存器中间状态及最终累加器值；
 - **规范与测试**：统一遵循 Python 蛇形命名规范，严格通过 RFC 1321 第 A.5 节官方全部 7 个测试向量、Wikipedia 测试向量及各种边界长度测试。
 
-```powershell
+```sh
 python md5_demo.py
 python md5_demo.py --text "The quick brown fox jumps over the lazy dog"
 python verify_md5.py
@@ -274,11 +274,116 @@ for i in range(64):
 - **过程追踪与对比注释**：支持控制台详细打印填充、消息扩展、每 20 步中间寄存器 $(A, B, C, D, E)$ 状态演进；代码中包含大量针对其前身 MD5 的机制对比注释（端序、扩展、移位与常数差异）；
 - **严格测试覆盖**：通过 RFC 3174 第 7.3 节官方全部测试向量（包含 100 万个 `'a'` 的性能测试）、Wikipedia 测试向量及多字节 UTF-8 边界测试。
 
-```powershell
+```sh
 python sha1_demo.py
 python sha1_demo.py --text "The quick brown fox jumps over the lazy dog"
 python verify_sha1.py
 ```
+
+## SHA-2 家族（SHA-224, SHA-256, SHA-384, SHA-512）实现与对比
+
+项目中提供了符合 FIPS PUB 180-4 与 RFC 6234 规范的 SHA-2 密码哈希算法纯 Python 教学参考实现，分为两个核心实现文件与一个综合验证套件：
+- [`sha256_demo.py`](file:///c:/Users/gy/projects/crypto101/sha256_demo.py)：实现 32 位字长核心引擎，承载 **SHA-256** 与 **SHA-224**；
+- [`sha512_demo.py`](file:///c:/Users/gy/projects/crypto101/sha512_demo.py)：实现 64 位字长核心引擎，承载 **SHA-512** 与 **SHA-384**；
+- [`verify_sha2.py`](file:///c:/Users/gy/projects/crypto101/verify_sha2.py)：独立的跨算法综合测试套件。
+
+### 1. 算法架构与跨代/跨族横向对比
+
+#### 对比一：SHA-256 vs SHA-1（算法演进与安全性跃升）
+1. **内部状态位宽**：
+   - SHA-1：160 位内部状态（5 个 32 位寄存器 $A, B, C, D, E$）；
+   - SHA-256：256 位内部状态（8 个 32 位寄存器 $A, B, C, D, E, F, G, H$）。
+2. **消息扩展（Message Schedule）抗差分强化**：
+   - SHA-1：使用极度脆弱的线性递归方程（仅异或和 1 位循环左移）：
+     $$W_t = (W_{t-3} \oplus W_{t-8} \oplus W_{t-14} \oplus W_{t-16}) \lll 1$$
+   - SHA-256：引入两个非线性小 $\sigma$ 函数，混合了循环右移与逻辑右移，并通过模 $2^{32}$ 加法打破仿射性：
+     $$W_t = (\sigma_1(W_{t-2}) + W_{t-7} + \sigma_0(W_{t-15}) + W_{t-16}) \bmod 2^{32}$$
+     其中逻辑右移（`SHR`）的引入破坏了纯循环移位的旋转对称性，大幅增强对差分密码分析的抵御能力。
+3. **轮函数状态扩散速度**：
+   - SHA-1：每步仅计算 1 个中间变量 $temp$，仅更新 1 个工作寄存器（$A \leftarrow temp$，其余平移）；
+   - SHA-256：每步同时计算 2 个中间变量 $T_1$ 和 $T_2$，同时更新 2 个工作寄存器：
+     $$e \leftarrow (d + T_1) \bmod 2^{32}, \quad a \leftarrow (T_1 + T_2) \bmod 2^{32}$$
+     扩散速度提升一倍，有效阻断局部差分特征的构造。
+4. **轮常数分布**：
+   - SHA-1：全程仅 4 个常数（每 20 步共享一个）；
+   - SHA-256：每一步均拥有独立的 32 位常数（共 64 个，源自前 64 个素数的三次方根小数部分）。
+5. **碰撞阻力**：
+   - SHA-1：已于 2017 年被实证碰撞（SHAttered），理论复杂度仅约 $2^{63}$；
+   - SHA-256：提供 128 位抗碰撞强度与 256 位抗原像强度，是全球密码基础设施基石。
+
+#### 对比二：SHA-224 vs SHA-256（32 位族截断与长度扩展抵御）
+1. **压缩引擎复用**：SHA-224 与 SHA-256 的 512 位分组压缩循环、64 步迭代逻辑、填充对齐逻辑（对齐至 56 模 64 字节并追加 64 位大端长度）和 64 个轮常数 $K$ **100% 完全相同**。
+2. **初始状态差异**：SHA-224 使用了与 SHA-256 独立的初始向量 $H^{(0)}$（取自第 9 至第 16 个素数平方根的小数部分第 33 至 64 位），确保同一输入在两算法下哈希值完全无关。
+3. **输出截断**：SHA-256 输出全部 8 个 32 位字（32 字节 / 256 位）；SHA-224 舍弃末尾的 $H_7$，只输出前 7 个 32 位字（28 字节 / 224 位）。
+4. **天然免疫长度扩展攻击（Length Extension Attack）**：
+   因为 SHA-224 丢弃了 32 位内部状态，攻击者仅凭输出摘要无法逆向还原完整的 256 位寄存器状态，因此在无需使用 HMAC 的场景下，直接作为 MAC 时亦对标准长度扩展攻击天然免疫。
+
+#### 对比三：SHA-512 vs SHA-256（64 位架构飞跃与吞吐优势）
+1. **字长与算术**：SHA-256 基于 32 位模 $2^{32}$ 运算；SHA-512 基于 64 位模 $2^{64}$ 运算。
+2. **分组规模**：SHA-256 分组为 512 位（64 字节，16 个 32 位字）；SHA-512 分组为 1024 位（128 字节，16 个 64 位字）。
+3. **轮数与常数表**：SHA-256 迭代 64 轮（64 个 32 位常数）；SHA-512 迭代 80 轮（80 个 64 位常数，取自前 80 个素数的三次方根）。
+4. **填充长度字段**：SHA-256 追加 64 位（8 字节）大端长度；SHA-512 追加 128 位（16 字节）大端长度，理论支持最大输入可达 $2^{128}-1$ 位。
+5. **计算效率反超**：
+   在现代 64 位 CPU 硬件上，处理 128 字节消息时，SHA-512 仅需 80 轮（平均每字节只需 $80 / 128 = 0.625$ 轮运算），而 SHA-256 处理 128 字节需要 2 个分组共 128 轮（平均每字节 $64 / 64 = 1.0$ 轮运算）。因此在 64 位硬件上处理大文件时，**SHA-512 的实际运算速度通常比 SHA-256 更快**。
+
+#### 对比四：SHA-384 vs SHA-512（64 位族截断与长度扩展抵御）
+1. **压缩引擎复用**：SHA-384 与 SHA-512 的 1024 位分组压缩函数、80 步迭代结构、80 个 64 位轮常数 $K$ **100% 完全相同**。
+2. **初始状态差异**：SHA-384 使用独立的初始状态向量 $H^{(0)}$（取自第 9 至第 16 个素数平方根的前 64 位小数部分）。
+3. **输出截断**：SHA-512 输出全部 8 个 64 位字（64 字节 / 512 位）；SHA-384 舍弃末尾的 $H_6$ 和 $H_7$，只输出前 6 个 64 位字（48 字节 / 384 位）。
+4. **抵御长度扩展攻击**：SHA-384 丢弃了多达 128 位内部状态，同样天然免疫标准长度扩展攻击。
+
+### 2. 核心函数命名与密码学意图：BSIG0, BSIG1, SSIG0, SSIG1 的由来
+
+在阅读 RFC 6234 或 C 源码时，经常会看到 `BSIG0`、`BSIG1`、`SSIG0`、`SSIG1` 这组函数名。它们的命名渊源与设计意图如下：
+
+#### ① 命名溯源（ASCII 音译）
+* **NIST 官方数学符号**：在 FIPS PUB 180-4 规范中，NIST 采用希腊字母表示两类非线性扩散函数：
+  * 大写 Sigma：$\Sigma_0(x)$ 与 $\Sigma_1(x)$；
+  * 小写 sigma：$\sigma_0(x)$ 与 $\sigma_1(x)$。
+* **RFC / 源码助记缩写**：因 IETF RFC 文档和 C 语言早期受限于 7-bit ASCII 字符集，无法直接渲染希腊字母，作者（Eastlake & Hansen）采用了直观的音译缩写：
+  * **`BSIG`** = **B**ig **Sig**ma（对应大写 $\Sigma$）；
+  * **`SSIG`** = **S**mall **Sig**ma（对应小写 $\sigma$）；
+  * `0` 和 `1` 分别表示该类别下的第 0 号与第 1 号函数。
+
+| RFC / C 源码标识 | NIST FIPS 符号 | 英文全称 | 应用阶段 | 运算构成 |
+| :--- | :--- | :--- | :--- | :--- |
+| **`BSIG0`** | $\Sigma_0$ | **B**ig **Sig**ma **0** | **主压缩循环**（作用于工作寄存器 $a$） | 全循环移位（3 项 $\text{ROTR}$ 异或） |
+| **`BSIG1`** | $\Sigma_1$ | **B**ig **Sig**ma **1** | **主压缩循环**（作用于工作寄存器 $e$） | 全循环移位（3 项 $\text{ROTR}$ 异或） |
+| **`SSIG0`** | $\sigma_0$ | **S**mall **Sig**ma **0** | **消息扩展调度**（作用于历史字 $W_{t-15}$） | 混合移位（2 项 $\text{ROTR}$ + 1 项 $\text{SHR}$ 异或） |
+| **`SSIG1`** | $\sigma_1$ | **S**mall **Sig**ma **1** | **消息扩展调度**（作用于历史字 $W_{t-2}$） | 混合移位（2 项 $\text{ROTR}$ + 1 项 $\text{SHR}$ 异或） |
+
+#### ② 密码学设计意图对比
+1. **BSIG（大 $\Sigma$）：状态高阶无损扩散**
+   - 用于主压缩函数每一步计算：$T_1$ 结合 $\text{BSIG1}(e)$，而 $T_2$ 结合 $\text{BSIG0}(a)$；
+   - 运算**全部由循环右移（$\text{ROTR}$）组成**，属于双射可逆变换，不会丢失任何比特熵，确保内部状态在轮与轮之间获得最大化的雪崩扩散。
+2. **SSIG（小 $\sigma$）：打破旋转对称性以抵御差分分析**
+   - 用于将 16 个输入字扩展为 64 字（SHA-256）或 80 字（SHA-512）：
+     $$W_t = (\text{SSIG1}(W_{t-2}) + W_{t-7} + \text{SSIG0}(W_{t-15}) + W_{t-16}) \bmod 2^w$$
+   - 注意最后一项是**逻辑右移（$\text{SHR}$）**，而不是循环移位；
+   - 逻辑右移会在高位直接补 0，彻底破坏了纯循环移位的 **旋转对称性（Rotational Symmetry）** 与仿射不变性，使得攻击者无法构造沿消息扩展链无阻力传递的高概率差分特征。
+
+#### ③ 数学公式对照表
+
+| 族系 | $\text{BSIG0}(x)$ | $\text{BSIG1}(x)$ | $\text{SSIG0}(x)$ | $\text{SSIG1}(x)$ |
+| :--- | :--- | :--- | :--- | :--- |
+| **32 位族**<br>(SHA-224 / SHA-256) | $(x \ggg 2) \oplus (x \ggg 13) \oplus (x \ggg 22)$ | $(x \ggg 6) \oplus (x \ggg 11) \oplus (x \ggg 25)$ | $(x \ggg 7) \oplus (x \ggg 18) \oplus (x \gg 3)$ | $(x \ggg 17) \oplus (x \ggg 19) \oplus (x \gg 10)$ |
+| **64 位族**<br>(SHA-384 / SHA-512) | $(x \ggg 28) \oplus (x \ggg 34) \oplus (x \ggg 39)$ | $(x \ggg 14) \oplus (x \ggg 18) \oplus (x \ggg 41)$ | $(x \ggg 1) \oplus (x \ggg 8) \oplus (x \gg 7)$ | $(x \ggg 19) \oplus (x \ggg 61) \oplus (x \gg 6)$ |
+
+### 3. 运行与验证指令
+
+```sh
+# 运行 32 位族（SHA-256 & SHA-224）演示
+python sha256_demo.py
+python sha256_demo.py --text "The quick brown fox jumps over the lazy dog"
+
+# 运行 64 位族（SHA-512 & SHA-384）演示
+python sha512_demo.py
+python sha512_demo.py --text "The quick brown fox jumps over the lazy dog"
+
+# 运行综合测试套件（覆盖 RFC 6234 官方向量、Wikipedia 雪崩测试、边界对齐与 hashlib 全量对比）
+python verify_sha2.py
+```
+
 
 
 
