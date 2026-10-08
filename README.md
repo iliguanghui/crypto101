@@ -283,9 +283,9 @@ python verify_sha1.py
 ## SHA-2 家族（SHA-224, SHA-256, SHA-384, SHA-512）实现与对比
 
 项目中提供了符合 FIPS PUB 180-4 与 RFC 6234 规范的 SHA-2 密码哈希算法纯 Python 教学参考实现，分为两个核心实现文件与一个综合验证套件：
-- [`sha256_demo.py`](file:///c:/Users/gy/projects/crypto101/sha256_demo.py)：实现 32 位字长核心引擎，承载 **SHA-256** 与 **SHA-224**；
-- [`sha512_demo.py`](file:///c:/Users/gy/projects/crypto101/sha512_demo.py)：实现 64 位字长核心引擎，承载 **SHA-512** 与 **SHA-384**；
-- [`verify_sha2.py`](file:///c:/Users/gy/projects/crypto101/verify_sha2.py)：独立的跨算法综合测试套件。
+- [`sha256_demo.py`](file://./sha256_demo.py)：实现 32 位字长核心引擎，承载 **SHA-256** 与 **SHA-224**；
+- [`sha512_demo.py`](file://./sha512_demo.py)：实现 64 位字长核心引擎，承载 **SHA-512** 与 **SHA-384**；
+- [`verify_sha2.py`](file://./verify_sha2.py)：独立的跨算法综合测试套件。
 
 ### 1. 算法架构与跨代/跨族横向对比
 
@@ -382,6 +382,79 @@ python sha512_demo.py --text "The quick brown fox jumps over the lazy dog"
 
 # 运行综合测试套件（覆盖 RFC 6234 官方向量、Wikipedia 雪崩测试、边界对齐与 hashlib 全量对比）
 python verify_sha2.py
+```
+
+## SHA-3 家族（Keccak-f[1600] 海绵结构）实现与解析
+
+项目中提供了依据 **NIST FIPS PUB 202** 规范与 Keccak 官方白皮书实现的 SHA-3 及 SHAKE 系列算法纯 Python 参考实现：
+- [`sha3_demo.py`](file://./sha3_demo.py)：实现底层 $\text{Keccak-f}[1600]$ 置换核、海绵吸收与挤压驱动器，涵盖固定长度哈希（**SHA3-224**, **SHA3-256**, **SHA3-384**, **SHA3-512**）与可扩展输出函数（**SHAKE128**, **SHAKE256**）；
+- [`verify_sha3.py`](file://./verify_sha3.py)：全覆盖测试套件，严格校验 NIST 官方向量、Wikipedia 案例、多速率边界与 `hashlib` 全量对比。
+
+### 1. 为什么 SHA-3 彻底颠覆了前代哈希算法架构？
+
+从 MD4、MD5 到 SHA-1、SHA-2，长达二十余年的主流哈希算法均沿用 **Merkle-Damgård 结构** 与 **ARX 范式**（加法 Add、旋转 Rotate、异或 XOR）。SHA-3（Keccak）则带来了彻底的密码学范式革命：
+
+| 对比维度 | 前代哈希（MD5 / SHA-1 / SHA-2） | 现代哈希（SHA-3 / Keccak） | 带来的优势 |
+| :--- | :--- | :--- | :--- |
+| **基础数学模型** | **Merkle-Damgård 结构**（压缩函数迭代） | **Sponge（海绵结构）**（置换函数迭代） | 彻底解耦哈希输出长度与内部状态大小；支持任意长度挤压输出（XOF）。 |
+| **内部状态与隐匿性** | 状态大小几乎等同于输出长度（如 SHA-256 为 256 位状态） | 状态固定为 **1600 位**，划分 Rate $r$ 与 Capacity $c$ | **天然免疫长度扩展攻击**：未公开的 Capacity $c$ 彻底隔绝了从摘要逆推寄存器状态的可能。 |
+| **基础运算集** | **模加法 ARX 体系**（依赖 32/64 位进位链加法） | **纯位逻辑运算**（仅异或、与、非、循环移位，无进位加法） | 在硬件（ASIC / FPGA）中几乎无门延迟瓶颈，抗侧信道功耗分析能力大幅提升。 |
+| **非线性机制** | 复杂的轮展开、选择函数、多数函数混合 | 全算法**仅有一个极简的 5 比特非线性 S 盒**：$\chi$（Chi） | 数学结构高度清晰规整，易于进行严格的代数度与差分概率边界证明。 |
+| **内存与数据端序** | 历史遗留的大端序（Big-Endian） | **原生小端序（Little-Endian）** | 完全契合现代主流 CPU（x86-64 / ARM / RISC-V）的硬件存取习惯，零字节翻转开销。 |
+
+### 2. 海绵结构（Sponge Construction）工作流程
+
+海绵结构由两个阶段组成（内部状态宽 $b = r + c = 1600$ 位 / 200 字节）：
+1. **吸收阶段（Absorbing Phase）**：
+   * 输入消息经填充对齐后分割为大小为 $r$（比特率，Rate）的数据块；
+   * 每个输入块与当前状态的前 $r$ 比特执行按位异或（XOR）；
+   * 随后调用 24 轮 $\text{Keccak-f}[1600]$ 置换函数混淆打乱状态。
+2. **挤压阶段（Squeezing Phase）**：
+   * 直接从状态的前 $r$ 比特按需读取输出；
+   * 若请求的输出长度超出 $r$（如 SHAKE 函数长流输出），则重新调用 $\text{Keccak-f}[1600]$ 进行状态更新，继续读取下一段 $r$ 比特。
+
+### 3. NIST FIPS PUB 202 官方算法编号与 $\text{Keccak-f}[1600]$ 核心映射
+
+在阅读与实现 NIST FIPS PUB 202 规范时，标准文档对置换步映射、辅助函数、海绵结构与填充规则给出了清晰权威的算法编号（**Algorithm 1 至 Algorithm 9**）：
+
+| 算法编号 | FIPS 202 章节 | 官方函数名称 | 对应实现函数 | 核心功能与密码学意图 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Algorithm 1** | Section 3.2.1 | $\theta(A)$ | [`step_theta`](file://./sha3_demo.py#L277) | **列混合线性扩散**：计算每列校验位 $C[x]$ 并计算 $D[x]$ 扩散至全平面，提供跨 Sheet 的雪崩扩散 |
+| **Algorithm 2** | Section 3.2.2 | $\rho(A)$ | [`step_rho`](file://./sha3_demo.py#L295) | **通道内循环移位**：按预计算三角形偏置矩阵 $r[x][y]$ 循环左移通道字，提供位切片间混淆 |
+| **Algorithm 3** | Section 3.2.3 | $\pi(A)$ | [`step_pi`](file://./sha3_demo.py#L307) | **坐标空间置换**：按矩阵变换 $(x, y) \to (y, (2x+3y)\bmod 5)$ 置换通道，防止活动位局部化 |
+| **Algorithm 4** | Section 3.2.4 | $\chi(A)$ | [`step_chi`](file://./sha3_demo.py#L321) | **行非线性映射**：$A'[x] = A[x] \oplus (\neg A[x+1] \land A[x+2])$，全算法**唯一的非线性 S-Box 层** |
+| **Algorithm 5** | Section 3.2.5 | $rc(t)$ | [`rc_lfsr`](file://./sha3_demo.py#L121) / [`compute_round_constant`](file://./sha3_demo.py#L160) | **轮常数比特发生器**：基于本原多项式 $x^8+x^6+x^5+x^4+1$ 的 8 级 LFSR 动态生成单比特常数并组装 64 位常数 |
+| **Algorithm 6** | Section 3.2.5 | $\iota(A, i_r)$ | [`step_iota`](file://./sha3_demo.py#L337) | **轮常数注入映射**：将由 $rc(t)$ 组装的 64 位常数异或注入原点通道 $A[0][0]$，打破轮对称性 |
+| **Algorithm 7** | Section 3.3 | $\text{KECCAK-}p[b, n_r](S)$ | [`keccak_f1600`](file://./sha3_demo.py#L375) | **完整置换**：将 200 字节状态映射为 $5\times 5$ 阵列，迭代 24 轮 $\text{Rnd} = \iota \circ \chi \circ \pi \circ \rho \circ \theta$ |
+| **Algorithm 8** | Section 4 | $\text{SPONGE}[f, pad, r](N, d)$ | [`keccak_sponge`](file://./sha3_demo.py#L427) | **海绵构造驱动器**：管理任意输入的分块吸收（Absorb）与多块长流挤压（Squeeze） |
+| **Algorithm 9** | Section 5.1 | $pad10^*1(x, m)$ | [`pad10star1`](file://./sha3_demo.py#L389) | **多速率填充规则**：向填充区填充 $10^*1$ 模式比特串（在字节粒度配合域分离后缀生成） |
+
+> **关键勘误与设计细节说明**：
+> 初读 FIPS PUB 202 时极易误以为 5 个步映射依次对应 Algorithm 1 ~ 5，从而误把 $\iota$ 当作 Algorithm 5。但实际上，FIPS 202 规范在第 3.2.5 节先将 LFSR 轮常数比特生成过程独立定义为 **Algorithm 5: $rc(t)$**，随后才将利用该常数对通道 $A[0][0]$ 执行异或注入的步映射定义为 **Algorithm 6: $\iota(A, i_r)$**。因此代码与文档中均严格标注 $\iota$ 为 Algorithm 6。
+
+
+### 4. 域分离（Domain Separation）与首字节填充陷阱
+
+FIPS PUB 202 在多速率填充（$pad10^*1$）前引入了**域分离后缀位**，这导致了不同变体在字节边界上的填充首字节差异：
+* **标准 SHA-3（SHA3-224..512）**：追加后缀位 `01`，与首个填充位 `1` 组合后，字节级填充首字节为 **`0x06`**；
+* **可扩展输出 SHAKE（SHAKE128 / SHAKE256）**：追加后缀位 `1111`，字节级填充首字节为 **`0x1F`**；
+* **原始 Keccak 提案（以太坊采用的 `keccak256`）**：无官方域分离后缀，首字节为 **`0x01`**。
+
+### 5. 运行与验证指令
+
+```sh
+# 运行默认教学演示（输出 SHA3-256 详细海绵吸收与挤压日志）
+python sha3_demo.py
+
+# 指定算法对任意文本计算摘要
+python sha3_demo.py --algo sha3-256 --text "The quick brown fox jumps over the lazy dog"
+python sha3_demo.py --algo sha3-512 --text "The quick brown fox jumps over the lazy dog"
+
+# 运行可扩展输出函数 SHAKE 并指定输出长度（例如 64 字节）
+python sha3_demo.py --algo shake128 --text "abc" --length 64
+
+# 运行全量验证套件（通过 NIST FIPS 202 官方测试、Wikipedia 案例、多块长流挤压与 hashlib 比对）
+python verify_sha3.py
 ```
 
 
