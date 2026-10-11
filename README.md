@@ -1,5 +1,86 @@
 # AES-256 CTR、ECB、CBC、CFB 与 OFB 教学
 
+## HMAC construction (RFC 2104)
+
+[`hmac_demo.py`](hmac_demo.py) contains the complete HMAC construction, console
+demo, and verification functions in one file. It follows the structure of the
+[Wikipedia pseudocode](https://en.wikipedia.org/wiki/HMAC#Implementation), with
+[RFC 2104 section 2 and its appendix](https://www.rfc-editor.org/rfc/rfc2104.html)
+taking precedence. It uses ordinary bytes, bytearrays, integers, and simple
+containers; no third-party dependencies or performance optimizations.
+
+### Construction and function names
+
+`hmac(key, message, algorithm="sha256", verbose=False)` returns raw tag bytes;
+`hmac_hex(...)` returns hexadecimal text. Text inputs use UTF-8. `to_bytes`
+normalizes inputs without changing caller-owned bytearrays, and `xor_bytes`
+performs equal-length bytewise XOR.
+
+1. `compute_block_sized_key` hashes the key only when it exceeds the hash block
+   size B, then appends zero bytes to reach B. A key of exactly B bytes is not
+   hashed. This normalization is separate from the hash's own message padding.
+2. Create `ipad` as B copies of `0x36`, and `opad` as B copies of `0x5c`.
+3. Form `i_key_pad = block_sized_key XOR ipad` and
+   `o_key_pad = block_sized_key XOR opad`.
+4. Compute `inner_hash = H(i_key_pad || message)`.
+5. Return `H(o_key_pad || inner_hash)`. Concatenation uses raw bytes, never hex
+   strings. Each H call starts with the underlying hash's normal initial state.
+
+The CLI prints the original and normalized key, pads, inner/outer inputs,
+intermediate digest, and final tag. It verifies the result using Python's
+standard-library `hmac`. `reference_hmac` is only an independent oracle: the
+construction itself never uses `hmac` or `hashlib`.
+
+### Local hash implementations
+
+| `--algo` | Local implementation | B: block bytes | L: tag bytes |
+| --- | --- | ---: | ---: |
+| `md5` | `md5_demo.md5` | 64 | 16 |
+| `sha1` | `sha1_demo.sha1` | 64 | 20 |
+| `sha224` | `sha256_demo.sha224` | 64 | 28 |
+| `sha256` | `sha256_demo.sha256` | 64 | 32 |
+| `sha384` | `sha512_demo.sha384` | 128 | 48 |
+| `sha512` | `sha512_demo.sha512` | 128 | 64 |
+| `sha3_224` | `sha3_demo.sha3_224` | 144 | 28 |
+| `sha3_256` | `sha3_demo.sha3_256` | 136 | 32 |
+| `sha3_384` | `sha3_demo.sha3_384` | 104 | 48 |
+| `sha3_512` | `sha3_demo.sha3_512` | 72 | 64 |
+
+For SHA-3, B is the sponge rate in bytes, not its 200-byte internal state or
+digest length. RFC 2104 predates SHA-3; the same HMAC construction uses these
+rate-based block sizes.
+
+```sh
+# Default SHA-256 demonstration with intermediate values
+python hmac_demo.py
+python hmac_demo.py --algo sha3_256 --key "example-key" --text "Hello!"
+
+# Show only final tags and verification for every supported hash
+python hmac_demo.py --algo all --quiet
+
+# All verification lives in the same file; checks also remain active under -O
+python hmac_demo.py --self-test
+```
+
+```python
+from hmac_demo import hmac, hmac_hex
+
+tag = hmac(b"key", b"message", "sha256")
+print(hmac_hex(b"key", b"message", "sha3_512", verbose=True))
+```
+
+Verification includes all four literal Wikipedia example tags and all three
+RFC 2104 appendix vectors, plus 360 independent library comparisons across the
+ten algorithms. Boundary cases cover empty inputs, keys/messages just below,
+at, and above B, and multiple blocks. Additional checks cover long-key
+normalization, UTF-8, bytearrays, unchanged inputs, verbose output, and invalid
+inputs. Explicit exceptions keep the checks active with Python's `-O` option.
+
+This is a one-shot teaching implementation with full-length tags. The trace
+exposes secret key material. MD5 and SHA-1 are included for historical learning;
+the default is SHA-256. HMAC authenticates a message but does not encrypt it.
+
+
 ## RSA demo
 
 ```sh
