@@ -558,3 +558,44 @@ authentication_tag = blake2s_hex(b"message", key=b"example-key")
 当前实现每次处理一条完整消息，支持 RFC 7693 的顺序模式与可选密钥，不提供增量更新、树形哈希、盐或个性化参数。
 
 参考：[RFC 7693](https://www.rfc-editor.org/rfc/rfc7693.html)、[Wikipedia：BLAKE / BLAKE2](https://en.wikipedia.org/wiki/BLAKE_(hash_function)#BLAKE2)。
+
+
+## SM3（GM/T 0004）实现与测试向量验证
+
+依据 [GM/T 0004《SM3 Cryptographic Hash Algorithm》英文译本](http://www.gmbz.org.cn/upload/2024-11-18/1731899426565012428.pdf)（2012 年发布，2024 年翻译），提供面向初学者的纯 Python 实现，无第三方依赖。
+
+- [sm3_demo.py](sm3_demo.py)：封装循环左移、P0/P1 变换、FF/GG 布尔函数、消息填充、消息扩展、单轮与分组压缩，提供 `sm3` 和 `sm3_hex`。
+- [verify_sm3.py](verify_sm3.py)：保存附录 A 两个例子的固定数据，检查填充、三个分组的全部消息扩展字、192 轮寄存器状态和最终摘要；另含边界与独立实现对比测试。
+
+### 1. 从消息到摘要
+
+SM3 使用 **32 位字、64 字节分组、64 轮压缩和 256 位摘要**。文本先转为 UTF-8 字节串，再按以下流程计算：
+
+1. **填充（5.2）**：追加 `0x80` 和若干零字节，最后追加 8 字节大端序的原消息比特长度。55 字节的消息可填成一块，56 字节需要两块；空消息也要填充。
+2. **初始化（4.1）**：复制标准给定的八个初始状态字。
+3. **消息扩展（5.3.2）**：将每块的大端序 16 个字扩展为 68 个 `W` 字，再计算 64 个 `W'` 字，其中 `W'[j] = W[j] XOR W[j+4]`。
+4. **压缩（5.3.3）**：执行 64 轮；FF/GG 与常数在第 16 轮（从 0 编号）切换。用最终工作寄存器与本块的输入状态异或，形成下一块的状态。
+5. **输出（5.4）**：将八个最终状态字按大端序拼接，得到 32 字节摘要，或 64 个十六进制字符。
+
+SM3 与 SHA-256 的字长、分组长度、轮数和长度填充方式相同，但初始向量、消息扩展和轮函数不同；SM3 的分组末尾使用异或合并状态，SHA-256 使用模加法，因此两者的摘要不同。
+
+### 2. 运行与验证
+
+```sh
+python3 sm3_demo.py --text abc
+python3 sm3_demo.py --text abc --verbose
+python3 verify_sm3.py
+```
+
+`--verbose` 按标准的 `A B C D E F G H` 顺序显示每一轮的八个工作寄存器，便于与附录 A 对照。
+
+```python
+from sm3_demo import sm3, sm3_hex
+
+raw_digest = sm3(b"abc")          # 32 字节
+hex_digest = sm3_hex("密码学")     # UTF-8 编码后计算摘要
+```
+
+测试覆盖附录 A 的 `abc`、`abcd` 重复 16 次，以及空消息、55/56/57 和 63/64/65 等长度边界、UTF-8、`bytearray`、重复调用和非法输入。额外的 190 条消息与 `hashlib.new("sm3", ...)` 对比；若 Python/OpenSSL 未提供 SM3，仅该对比测试会明确跳过，固定标准向量测试仍可运行。
+
+接口一次处理完整消息，支持 `bytes`、`bytearray` 和字符串。标准允许非整字节的比特串，但此教学接口仅支持整字节输入，消息比特长度须小于 `2**64`。
