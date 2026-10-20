@@ -21,10 +21,16 @@ This one-shot, byte-oriented API returns C || T. It uses full 128-bit tags
 only. Send the nonce and AAD separately; never reuse a nonce with the same
 key. Verbose mode exposes intermediate values for learning with demo keys.
 
+GMAC is GCM with empty plaintext: the message is supplied as AAD, so it
+is authenticated but stays visible. The output is just the 16-byte tag.
+GMAC also requires a unique nonce for every message under the same key
+(including any GCM encryptions using that key).
+
 Usage:
   python3 -m pip install -r requirements.txt
   python3 gcm_demo.py                 # Public specification test case 2
   python3 gcm_demo.py --text hello    # Fresh key and nonce, UTF-8 input
+  python3 gcm_demo.py --gmac --text hello  # Authenticate without encryption
   python3 gcm_demo.py --self-test
 """
 
@@ -199,6 +205,26 @@ def gcm_decrypt(key, nonce, ciphertext_and_tag, associated_data=b""):
     return counter_transform(key, initial, ciphertext)
 
 
+def gmac(key, nonce, message, verbose=False):
+    """Return a 16-byte MAC for message; caller ensures nonce uniqueness.
+
+    Empty plaintext produces empty ciphertext, so GCM's ciphertext || tag
+    output contains only the tag. Even an empty message is valid.
+    """
+    return gcm_encrypt(key, nonce, b"", associated_data=message, verbose=verbose)
+
+
+def verify_gmac(key, nonce, message, tag):
+    """Return None on success; raise ValueError if authentication fails."""
+    tag = byte_input(tag, "tag")
+    # Require exactly one tag: extra bytes must not become GCM ciphertext.
+    if len(tag) != TAG_BYTES:
+        raise ValueError("GMAC authentication failed")
+    expected_tag = gmac(key, nonce, message)
+    if not compare_digest(expected_tag, tag):
+        raise ValueError("GMAC authentication failed")
+
+
 def self_test():
     """Fixed proposal vectors and independent library comparisons; no network."""
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -274,9 +300,22 @@ def main():
     parser = argparse.ArgumentParser(description="AES-GCM demo with intermediate values")
     parser.add_argument("--text", help="UTF-8 text; default is public specification test case 2")
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--gmac", action="store_true", help="Authenticate text without encrypting it")
     arguments = parser.parse_args()
     if arguments.self_test:
         self_test()
+        return
+    if arguments.gmac:
+        key = secrets.token_bytes(16)
+        nonce = secrets.token_bytes(DEFAULT_NONCE_BYTES)
+        message = (arguments.text if arguments.text is not None else "hello").encode("utf-8")
+        print("Demo key =", key.hex())
+        print("Nonce =", nonce.hex())
+        print("Authenticated message (not encrypted) =", message.hex())
+        tag = gmac(key, nonce, message, verbose=True)
+        print("GMAC tag =", tag.hex())
+        verify_gmac(key, nonce, message, tag)
+        print("GMAC verification succeeded")
         return
     if arguments.text is None:
         print("Public specification test case 2:")
