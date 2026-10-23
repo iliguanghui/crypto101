@@ -680,3 +680,90 @@ hex_digest = sm3_hex("密码学")     # UTF-8 编码后计算摘要
 测试覆盖附录 A 的 `abc`、`abcd` 重复 16 次，以及空消息、55/56/57 和 63/64/65 等长度边界、UTF-8、`bytearray`、重复调用和非法输入。额外的 190 条消息与 `hashlib.new("sm3", ...)` 对比；若 Python/OpenSSL 未提供 SM3，仅该对比测试会明确跳过，固定标准向量测试仍可运行。
 
 接口一次处理完整消息，支持 `bytes`、`bytearray` 和字符串。标准允许非整字节的比特串，但此教学接口仅支持整字节输入，消息比特长度须小于 `2**64`。
+
+
+
+## ChaCha20-Poly1305 vs. AES-GCM Comparison
+
+Both [`chacha20_poly1305_demo.py`](chacha20_poly1305_demo.py) and [`gcm_demo.py`](gcm_demo.py) implement **AEAD (Authenticated Encryption with Associated Data)** following the **Encrypt-then-MAC** paradigm. They represent the two dominant cipher suites on the modern internet (e.g., TLS 1.3, QUIC, WireGuard, SSH).
+
+### 1. High-Level Architectural Comparison
+
+| Feature | ChaCha20-Poly1305 ([`chacha20_poly1305_demo.py`](chacha20_poly1305_demo.py)) | AES-GCM ([`gcm_demo.py`](gcm_demo.py)) |
+| :--- | :--- | :--- |
+| **Standard** | RFC 8439 | NIST SP 800-38D |
+| **Key Sizes** | Fixed **256-bit** (32 bytes) (`KEY_BYTES`) | **128, 192, or 256-bit** (16, 24, 32 bytes) (`VALID_KEY_LENGTHS_BYTES`) |
+| **Nonce (IV) Size** | Fixed **96-bit** (12 bytes) (`NONCE_BYTES`) | **96-bit recommended**; arbitrary non-empty up to $2^{64}-1$ bits supported via GHASH (`initial_counter`) |
+| **Cipher Block Size** | **64 bytes** (512 bits) per counter (`BLOCK_BYTES`) | **16 bytes** (128 bits) per counter (`BLOCK_BYTES`) |
+| **Max Payload Size** | $(2^{32}-1) \times 64 \approx \mathbf{256\text{ GiB}}$ (`MAX_PAYLOAD_BYTES`) | $2^{39}-256\text{ bits} \approx \mathbf{64\text{ GiB}}$ (`MAX_PLAINTEXT_BYTES`) |
+| **Endianness** | **Little-endian** throughout | **Big-endian** (with reversed bit-order in $\text{GF}(2^{128})$) |
+| **Dependencies** | 100% pure Python (no external libraries) | Uses `cryptography` for raw AES block encryption (`aes_block`) |
+
+### 2. Encryption Layer: ChaCha20 vs. AES-CTR
+
+Both algorithms turn a block function into a **stream cipher** by encrypting sequential 32-bit counters and XORing the resulting keystream with the plaintext.
+
+1. **Core Primitive:**
+   - **ChaCha20 (`quarter_round` & `chacha20_block`):** Uses 20 rounds of **ARX** (32-bit modular addition, XOR, and fixed rotations) on a 16-word (64-byte) state matrix, followed by feed-forward addition of the initial state.
+   - **AES-CTR (`aes_block` & `counter_transform`):** Evaluates the AES block cipher on a 16-byte counter block (`nonce (12B) || counter (4B)`).
+2. **Counter Allocation (`0` vs `1` vs `2`):**
+   - **ChaCha20-Poly1305:** Reserves **counter `0`** to generate the 32-byte one-time Poly1305 key, and starts payload encryption at **counter `1`**.
+   - **AES-GCM:** Uses the all-zero block $\text{AES}_K(0^{128})$ to derive the GHASH key $H$. For a 96-bit nonce, the initial counter $J_0$ starts at **counter `1`** (`nonce || 0x00000001`), which is reserved to mask the GHASH tag ($\text{AES}_K(J_0)$). Payload encryption therefore starts at **counter `2`** ($\text{inc}_{32}(J_0)$).
+
+### 3. Authentication Layer: Poly1305 vs. GHASH
+
+#### A. Prime Field Arithmetic vs. Galois Field Arithmetic
+* **Poly1305 (`poly1305`):**
+  - Uses ordinary **integer addition and multiplication modulo the prime $2^{130} - 5$**:
+    ```python
+    accumulator = ((accumulator + number) * multiplier) % POLY1305_MODULUS
+    ```
+  - Every CPU natively has fast integer multipliers and adders, making this fast and constant-time in software.
+* **GHASH (`field_multiply` & `ghash`):**
+  - Uses **binary polynomial arithmetic (carryless multiplication) in $\text{GF}(2^{128})$** modulo $x^{128} + x^7 + x^2 + x + 1$ (`0xE100...00`).
+  - Addition is bitwise XOR (`accumulator ^ block`), and multiplication requires a 128-step bit-by-bit shift-and-XOR loop in software unless the CPU has dedicated carryless multiplication instructions (`PCLMULQDQ` on x86, `PMULL` on ARM).
+
+#### B. How MAC Keys Are Derived and Masked (Why Nonce Reuse Breaks Both)
+* **ChaCha20-Poly1305:**
+  - Derives a **brand-new $(r, s)$ key pair for every message** from `chacha20_block(key, 0, nonce)[:32]`.
+  - Finalizes the tag by adding $s \bmod 2^{128}$: `((accumulator + pad) % (1 << 128))`.
+* **AES-GCM:**
+  - Uses a **static hash subkey $H = \text{AES}_K(0^{128})$** across **all messages** encrypted under the same AES key $K$.
+  - Only the final tag mask $\text{AES}_K(J_0)$ changes per nonce: `tag = GHASH(H, A, C) ^ AES_K(J_0)` (`authentication_tag`).
+  - **Consequence of Nonce Reuse:** In ChaCha20-Poly1305, reusing a nonce compromises the one-time key $(r, s)$ for *that specific nonce*. In AES-GCM, reusing a nonce leaks $\text{GHASH}(H, A_1, C_1) \oplus \text{GHASH}(H, A_2, C_2) = T_1 \oplus T_2$, allowing an attacker to solve a polynomial in $\text{GF}(2^{128})$ to recover the **master hash key $H$**—permanently breaking authentication for **every past and future message** under that AES key (the "Forbidden Attack").
+
+#### C. Handling Leading Zeros in Messages
+* **Poly1305:** Appends `b"\x01"` to every 16-byte chunk (`fragment + b"\x01"`) so an all-zero chunk still evaluates to a non-zero coefficient ($2^{128}$).
+* **GHASH:** Does **not** append a `1` bit to blocks (an all-zero block in GHASH has value `0`), and instead relies entirely on the final 16-byte length block to distinguish messages with different numbers of leading zeros.
+
+### 4. AEAD Framing: `mac_input` vs. `ghash`
+
+Both algorithms authenticate the same structure—`zero_pad(AAD) || zero_pad(Ciphertext) || length_block`—with two subtle encoding differences:
+
+```python
+# In chacha20_poly1305_demo.py (mac_input):
+# Little-endian BYTE counts
++ len(associated_data).to_bytes(8, "little")
++ len(ciphertext).to_bytes(8, "little")
+
+# In gcm_demo.py (ghash):
+# Big-endian BIT counts (len * 8)
+length_block = ((len(associated_data) * 8).to_bytes(8, "big")
+                + (len(ciphertext) * 8).to_bytes(8, "big"))
+```
+
+### 5. Security & Verification Commonalities
+
+Both implementations follow two critical cryptographic engineering rules during decryption (`chacha20_poly1305` and `gcm_decrypt`):
+1. **Constant-Time Tag Verification:** Both use `hmac.compare_digest(expected_tag, received_tag)` to prevent timing side-channel attacks.
+2. **Verify-Before-Decrypt (Doom Principle):** Both verify the authentication tag over the ciphertext *before* running the stream cipher decryption or returning any data to the caller, ensuring unauthenticated plaintext is never exposed.
+
+```sh
+# Run ChaCha20-Poly1305 demo and verification
+python3 chacha20_poly1305_demo.py
+python3 verify_chacha20_poly1305.py
+
+# Run AES-GCM demo and self-test
+python3 gcm_demo.py
+python3 gcm_demo.py --self-test
+```
