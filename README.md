@@ -33,18 +33,18 @@ construction itself never uses `hmac` or `hashlib`.
 
 ### Local hash implementations
 
-| `--algo` | Local implementation | B: block bytes | L: tag bytes |
-| --- | --- | ---: | ---: |
-| `md5` | `md5_demo.md5` | 64 | 16 |
-| `sha1` | `sha1_demo.sha1` | 64 | 20 |
-| `sha224` | `sha256_demo.sha224` | 64 | 28 |
-| `sha256` | `sha256_demo.sha256` | 64 | 32 |
-| `sha384` | `sha512_demo.sha384` | 128 | 48 |
-| `sha512` | `sha512_demo.sha512` | 128 | 64 |
-| `sha3_224` | `sha3_demo.sha3_224` | 144 | 28 |
-| `sha3_256` | `sha3_demo.sha3_256` | 136 | 32 |
-| `sha3_384` | `sha3_demo.sha3_384` | 104 | 48 |
-| `sha3_512` | `sha3_demo.sha3_512` | 72 | 64 |
+| `--algo`   | Local implementation | B: block bytes | L: tag bytes |
+|------------|----------------------|---------------:|-------------:|
+| `md5`      | `md5_demo.md5`       |             64 |           16 |
+| `sha1`     | `sha1_demo.sha1`     |             64 |           20 |
+| `sha224`   | `sha256_demo.sha224` |             64 |           28 |
+| `sha256`   | `sha256_demo.sha256` |             64 |           32 |
+| `sha384`   | `sha512_demo.sha384` |            128 |           48 |
+| `sha512`   | `sha512_demo.sha512` |            128 |           64 |
+| `sha3_224` | `sha3_demo.sha3_224` |            144 |           28 |
+| `sha3_256` | `sha3_demo.sha3_256` |            136 |           32 |
+| `sha3_384` | `sha3_demo.sha3_384` |            104 |           48 |
+| `sha3_512` | `sha3_demo.sha3_512` |             72 |           64 |
 
 For SHA-3, B is the sponge rate in bytes, not its 200-byte internal state or
 digest length. RFC 2104 predates SHA-3; the same HMAC construction uses these
@@ -243,12 +243,12 @@ python verify_md5.py
 
 在对比 RFC 1321（MD5）第 3.2 节与 RFC 3174（SHA-1）第 4 节时，会发现两者在填充消息长度（Bit Length）时采用了相反的端序：**MD5 将长度作为 64 位小端序整数追加，而 SHA-1 则作为 64 位大端序整数追加**。这一差异源自设计者背景、目标架构优化及行业标准的历史分化：
 
-| 维度 | MD5（1991 年，Ronald Rivest 设计） | SHA-1（1993/1995 年，NSA 设计 / NIST 发布） |
-| :--- | :--- | :--- |
-| **设计主体** | 麻省理工学院学者、RSA 创始人 Ronald Rivest | 美国国家安全局（NSA）设计，NIST 发布为联邦标准（FIPS） |
-| **核心优化目标** | **32 位 x86 个人电脑（PC）软件吞吐速度最大化** | **标准规范的数学直观性、网络字节序统一性与 FIPS 标准一致性** |
-| **当时硬件背景** | Intel 80386 / 80486 架构（原生 **Little-Endian**） | 政府与科研大型机/工作站（IBM, Sun SPARC 等 **Big-Endian**） |
-| **全算法端序策略** | **全流程 Little-Endian**（字解析、长度填充、摘要序列化） | **全流程 Big-Endian**（字解析、长度填充、摘要序列化） |
+| 维度               | MD5（1991 年，Ronald Rivest 设计）                       | SHA-1（1993/1995 年，NSA 设计 / NIST 发布）                  |
+|:-------------------|:---------------------------------------------------------|:-------------------------------------------------------------|
+| **设计主体**       | 麻省理工学院学者、RSA 创始人 Ronald Rivest               | 美国国家安全局（NSA）设计，NIST 发布为联邦标准（FIPS）       |
+| **核心优化目标**   | **32 位 x86 个人电脑（PC）软件吞吐速度最大化**           | **标准规范的数学直观性、网络字节序统一性与 FIPS 标准一致性** |
+| **当时硬件背景**   | Intel 80386 / 80486 架构（原生 **Little-Endian**）       | 政府与科研大型机/工作站（IBM, Sun SPARC 等 **Big-Endian**）  |
+| **全算法端序策略** | **全流程 Little-Endian**（字解析、长度填充、摘要序列化） | **全流程 Big-Endian**（字解析、长度填充、摘要序列化）        |
 
 #### 1. MD5 的选择：追求在 Intel x86 上的极致软件性能
 1990 年代初，以 Intel 80386/80486 为代表的 32 位 PC 正席卷市场，该架构为原生小端序。在早期的 80386 处理器上，尚未提供专门的单周期字节反转指令（`BSWAP` 于 80486 才加入）。如果算法在内存中规定为小端序，C 语言中只需一条简单的指针转换：
@@ -330,12 +330,12 @@ for i in range(64):
 
 #### 2. 四大结构维度的降维打击
 
-| 比较维度 | MD5（Ronald Rivest 设计） | SHA-1（NSA 设计） | 为什么 SHA-1 更简洁？ |
-| :--- | :--- | :--- | :--- |
-| **1. 加法常数** | **64 个各不相同的 32 位常数**<br>（由正弦函数 $2^{32} \cdot \|\sin(i+1)\|$ 生成） | **全程仅 4 个常数**<br>（每 20 步共享一个，分别来自 $\sqrt{2}, \sqrt{3}, \sqrt{5}, \sqrt{10}$） | SHA-1 不需要存储或计算庞大的 64 字常数表。 |
-| **2. 循环移位位数** | **由 16 个不同数字组成的 64 项数组**<br>（7, 12, 17, 22, 5, 9, 14, 20...） | **全程固定仅 2 个常量**<br>（永远是固定的 `A <<< 5` 与 `B <<< 30`） | SHA-1 完全**不需要**移位查找表，每一步移位量完全恒定。 |
-| **3. 消息字寻址** | **复杂的模同余跳跃置换**<br>第 1 轮：$i$<br>第 2 轮：$(5i+1) \bmod 16$<br>第 3 轮：$(3i+5) \bmod 16$<br>第 4 轮：$(7i) \bmod 16$ | **线性递增读取**<br>第 $i$ 步直接顺序读取 $W[i]$，无分支、无模运算 | SHA-1 将消息字映射完全平铺为顺序流水线访问。 |
-| **4. 状态寄存器更新** | **非对称轮换**<br>对 `temp` 移位后累加到 $B$，再进行非对称置换 | **经典的五级移位寄存器管道（Feistel 风格）**<br>$E \leftarrow D \leftarrow C \leftarrow (B \lll 30) \leftarrow A \leftarrow \text{temp}$ | SHA-1 每一轮状态像规整的移位寄存器流水线单向流动。 |
+| 比较维度              | MD5（Ronald Rivest 设计）                                                                                                        | SHA-1（NSA 设计）                                                                                                                        | 为什么 SHA-1 更简洁？                                  |
+|:----------------------|:---------------------------------------------------------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------|:-------------------------------------------------------|
+| **1. 加法常数**       | **64 个各不相同的 32 位常数**<br>（由正弦函数 $2^{32} \cdot \|\sin(i+1)\|$ 生成）                                                | **全程仅 4 个常数**<br>（每 20 步共享一个，分别来自 $\sqrt{2}, \sqrt{3}, \sqrt{5}, \sqrt{10}$）                                          | SHA-1 不需要存储或计算庞大的 64 字常数表。             |
+| **2. 循环移位位数**   | **由 16 个不同数字组成的 64 项数组**<br>（7, 12, 17, 22, 5, 9, 14, 20...）                                                       | **全程固定仅 2 个常量**<br>（永远是固定的 `A <<< 5` 与 `B <<< 30`）                                                                      | SHA-1 完全**不需要**移位查找表，每一步移位量完全恒定。 |
+| **3. 消息字寻址**     | **复杂的模同余跳跃置换**<br>第 1 轮：$i$<br>第 2 轮：$(5i+1) \bmod 16$<br>第 3 轮：$(3i+5) \bmod 16$<br>第 4 轮：$(7i) \bmod 16$ | **线性递增读取**<br>第 $i$ 步直接顺序读取 $W[i]$，无分支、无模运算                                                                       | SHA-1 将消息字映射完全平铺为顺序流水线访问。           |
+| **4. 状态寄存器更新** | **非对称轮换**<br>对 `temp` 移位后累加到 $B$，再进行非对称置换                                                                   | **经典的五级移位寄存器管道（Feistel 风格）**<br>$E \leftarrow D \leftarrow C \leftarrow (B \lll 30) \leftarrow A \leftarrow \text{temp}$ | SHA-1 每一轮状态像规整的移位寄存器流水线单向流动。     |
 
 #### 3. 为什么 NSA 能把 SHA-1 设计得如此规整？
 从密码工程学角度看，这是 NSA（美国国家安全局）对 Rivest 的 MD4/MD5 架构做的一次**工程降维解耦**：
@@ -426,12 +426,12 @@ python verify_sha1.py
   * **`SSIG`** = **S**mall **Sig**ma（对应小写 $\sigma$）；
   * `0` 和 `1` 分别表示该类别下的第 0 号与第 1 号函数。
 
-| RFC / C 源码标识 | NIST FIPS 符号 | 英文全称 | 应用阶段 | 运算构成 |
-| :--- | :--- | :--- | :--- | :--- |
-| **`BSIG0`** | $\Sigma_0$ | **B**ig **Sig**ma **0** | **主压缩循环**（作用于工作寄存器 $a$） | 全循环移位（3 项 $\text{ROTR}$ 异或） |
-| **`BSIG1`** | $\Sigma_1$ | **B**ig **Sig**ma **1** | **主压缩循环**（作用于工作寄存器 $e$） | 全循环移位（3 项 $\text{ROTR}$ 异或） |
-| **`SSIG0`** | $\sigma_0$ | **S**mall **Sig**ma **0** | **消息扩展调度**（作用于历史字 $W_{t-15}$） | 混合移位（2 项 $\text{ROTR}$ + 1 项 $\text{SHR}$ 异或） |
-| **`SSIG1`** | $\sigma_1$ | **S**mall **Sig**ma **1** | **消息扩展调度**（作用于历史字 $W_{t-2}$） | 混合移位（2 项 $\text{ROTR}$ + 1 项 $\text{SHR}$ 异或） |
+| RFC / C 源码标识 | NIST FIPS 符号 | 英文全称                  | 应用阶段                                    | 运算构成                                                |
+|:-----------------|:---------------|:--------------------------|:--------------------------------------------|:--------------------------------------------------------|
+| **`BSIG0`**      | $\Sigma_0$     | **B**ig **Sig**ma **0**   | **主压缩循环**（作用于工作寄存器 $a$）      | 全循环移位（3 项 $\text{ROTR}$ 异或）                   |
+| **`BSIG1`**      | $\Sigma_1$     | **B**ig **Sig**ma **1**   | **主压缩循环**（作用于工作寄存器 $e$）      | 全循环移位（3 项 $\text{ROTR}$ 异或）                   |
+| **`SSIG0`**      | $\sigma_0$     | **S**mall **Sig**ma **0** | **消息扩展调度**（作用于历史字 $W_{t-15}$） | 混合移位（2 项 $\text{ROTR}$ + 1 项 $\text{SHR}$ 异或） |
+| **`SSIG1`**      | $\sigma_1$     | **S**mall **Sig**ma **1** | **消息扩展调度**（作用于历史字 $W_{t-2}$）  | 混合移位（2 项 $\text{ROTR}$ + 1 项 $\text{SHR}$ 异或） |
 
 #### ② 密码学设计意图对比
 1. **BSIG（大 $\Sigma$）：状态高阶无损扩散**
@@ -445,10 +445,10 @@ python verify_sha1.py
 
 #### ③ 数学公式对照表
 
-| 族系 | $\text{BSIG0}(x)$ | $\text{BSIG1}(x)$ | $\text{SSIG0}(x)$ | $\text{SSIG1}(x)$ |
-| :--- | :--- | :--- | :--- | :--- |
-| **32 位族**<br>(SHA-224 / SHA-256) | $(x \ggg 2) \oplus (x \ggg 13) \oplus (x \ggg 22)$ | $(x \ggg 6) \oplus (x \ggg 11) \oplus (x \ggg 25)$ | $(x \ggg 7) \oplus (x \ggg 18) \oplus (x \gg 3)$ | $(x \ggg 17) \oplus (x \ggg 19) \oplus (x \gg 10)$ |
-| **64 位族**<br>(SHA-384 / SHA-512) | $(x \ggg 28) \oplus (x \ggg 34) \oplus (x \ggg 39)$ | $(x \ggg 14) \oplus (x \ggg 18) \oplus (x \ggg 41)$ | $(x \ggg 1) \oplus (x \ggg 8) \oplus (x \gg 7)$ | $(x \ggg 19) \oplus (x \ggg 61) \oplus (x \gg 6)$ |
+| 族系                               | $\text{BSIG0}(x)$                                   | $\text{BSIG1}(x)$                                   | $\text{SSIG0}(x)$                                | $\text{SSIG1}(x)$                                  |
+|:-----------------------------------|:----------------------------------------------------|:----------------------------------------------------|:-------------------------------------------------|:---------------------------------------------------|
+| **32 位族**<br>(SHA-224 / SHA-256) | $(x \ggg 2) \oplus (x \ggg 13) \oplus (x \ggg 22)$  | $(x \ggg 6) \oplus (x \ggg 11) \oplus (x \ggg 25)$  | $(x \ggg 7) \oplus (x \ggg 18) \oplus (x \gg 3)$ | $(x \ggg 17) \oplus (x \ggg 19) \oplus (x \gg 10)$ |
+| **64 位族**<br>(SHA-384 / SHA-512) | $(x \ggg 28) \oplus (x \ggg 34) \oplus (x \ggg 39)$ | $(x \ggg 14) \oplus (x \ggg 18) \oplus (x \ggg 41)$ | $(x \ggg 1) \oplus (x \ggg 8) \oplus (x \gg 7)$  | $(x \ggg 19) \oplus (x \ggg 61) \oplus (x \gg 6)$  |
 
 ### 3. 运行与验证指令
 
@@ -475,13 +475,13 @@ python verify_sha2.py
 
 从 MD4、MD5 到 SHA-1、SHA-2，长达二十余年的主流哈希算法均沿用 **Merkle-Damgård 结构** 与 **ARX 范式**（加法 Add、旋转 Rotate、异或 XOR）。SHA-3（Keccak）则带来了彻底的密码学范式革命：
 
-| 对比维度 | 前代哈希（MD5 / SHA-1 / SHA-2） | 现代哈希（SHA-3 / Keccak） | 带来的优势 |
-| :--- | :--- | :--- | :--- |
-| **基础数学模型** | **Merkle-Damgård 结构**（压缩函数迭代） | **Sponge（海绵结构）**（置换函数迭代） | 彻底解耦哈希输出长度与内部状态大小；支持任意长度挤压输出（XOF）。 |
-| **内部状态与隐匿性** | 状态大小几乎等同于输出长度（如 SHA-256 为 256 位状态） | 状态固定为 **1600 位**，划分 Rate $r$ 与 Capacity $c$ | **天然免疫长度扩展攻击**：未公开的 Capacity $c$ 彻底隔绝了从摘要逆推寄存器状态的可能。 |
-| **基础运算集** | **模加法 ARX 体系**（依赖 32/64 位进位链加法） | **纯位逻辑运算**（仅异或、与、非、循环移位，无进位加法） | 在硬件（ASIC / FPGA）中几乎无门延迟瓶颈，抗侧信道功耗分析能力大幅提升。 |
-| **非线性机制** | 复杂的轮展开、选择函数、多数函数混合 | 全算法**仅有一个极简的 5 比特非线性 S 盒**：$\chi$（Chi） | 数学结构高度清晰规整，易于进行严格的代数度与差分概率边界证明。 |
-| **内存与数据端序** | 历史遗留的大端序（Big-Endian） | **原生小端序（Little-Endian）** | 完全契合现代主流 CPU（x86-64 / ARM / RISC-V）的硬件存取习惯，零字节翻转开销。 |
+| 对比维度             | 前代哈希（MD5 / SHA-1 / SHA-2）                        | 现代哈希（SHA-3 / Keccak）                                | 带来的优势                                                                             |
+|:---------------------|:-------------------------------------------------------|:----------------------------------------------------------|:---------------------------------------------------------------------------------------|
+| **基础数学模型**     | **Merkle-Damgård 结构**（压缩函数迭代）                | **Sponge（海绵结构）**（置换函数迭代）                    | 彻底解耦哈希输出长度与内部状态大小；支持任意长度挤压输出（XOF）。                      |
+| **内部状态与隐匿性** | 状态大小几乎等同于输出长度（如 SHA-256 为 256 位状态） | 状态固定为 **1600 位**，划分 Rate $r$ 与 Capacity $c$     | **天然免疫长度扩展攻击**：未公开的 Capacity $c$ 彻底隔绝了从摘要逆推寄存器状态的可能。 |
+| **基础运算集**       | **模加法 ARX 体系**（依赖 32/64 位进位链加法）         | **纯位逻辑运算**（仅异或、与、非、循环移位，无进位加法）  | 在硬件（ASIC / FPGA）中几乎无门延迟瓶颈，抗侧信道功耗分析能力大幅提升。                |
+| **非线性机制**       | 复杂的轮展开、选择函数、多数函数混合                   | 全算法**仅有一个极简的 5 比特非线性 S 盒**：$\chi$（Chi） | 数学结构高度清晰规整，易于进行严格的代数度与差分概率边界证明。                         |
+| **内存与数据端序**   | 历史遗留的大端序（Big-Endian）                         | **原生小端序（Little-Endian）**                           | 完全契合现代主流 CPU（x86-64 / ARM / RISC-V）的硬件存取习惯，零字节翻转开销。          |
 
 ### 2. 海绵结构（Sponge Construction）工作流程
 
@@ -498,17 +498,17 @@ python verify_sha2.py
 
 在阅读与实现 NIST FIPS PUB 202 规范时，标准文档对置换步映射、辅助函数、海绵结构与填充规则给出了清晰权威的算法编号（**Algorithm 1 至 Algorithm 9**）：
 
-| 算法编号 | FIPS 202 章节 | 官方函数名称 | 对应实现函数 | 核心功能与密码学意图 |
-| :--- | :--- | :--- | :--- | :--- |
-| **Algorithm 1** | Section 3.2.1 | $\theta(A)$ | [`step_theta`](file://./sha3_demo.py#L277) | **列混合线性扩散**：计算每列校验位 $C[x]$ 并计算 $D[x]$ 扩散至全平面，提供跨 Sheet 的雪崩扩散 |
-| **Algorithm 2** | Section 3.2.2 | $\rho(A)$ | [`step_rho`](file://./sha3_demo.py#L295) | **通道内循环移位**：按预计算三角形偏置矩阵 $r[x][y]$ 循环左移通道字，提供位切片间混淆 |
-| **Algorithm 3** | Section 3.2.3 | $\pi(A)$ | [`step_pi`](file://./sha3_demo.py#L307) | **坐标空间置换**：按矩阵变换 $(x, y) \to (y, (2x+3y)\bmod 5)$ 置换通道，防止活动位局部化 |
-| **Algorithm 4** | Section 3.2.4 | $\chi(A)$ | [`step_chi`](file://./sha3_demo.py#L321) | **行非线性映射**：$A'[x] = A[x] \oplus (\neg A[x+1] \land A[x+2])$，全算法**唯一的非线性 S-Box 层** |
-| **Algorithm 5** | Section 3.2.5 | $rc(t)$ | [`rc_lfsr`](file://./sha3_demo.py#L121) / [`compute_round_constant`](file://./sha3_demo.py#L160) | **轮常数比特发生器**：基于本原多项式 $x^8+x^6+x^5+x^4+1$ 的 8 级 LFSR 动态生成单比特常数并组装 64 位常数 |
-| **Algorithm 6** | Section 3.2.5 | $\iota(A, i_r)$ | [`step_iota`](file://./sha3_demo.py#L337) | **轮常数注入映射**：将由 $rc(t)$ 组装的 64 位常数异或注入原点通道 $A[0][0]$，打破轮对称性 |
-| **Algorithm 7** | Section 3.3 | $\text{KECCAK-}p[b, n_r](S)$ | [`keccak_f1600`](file://./sha3_demo.py#L375) | **完整置换**：将 200 字节状态映射为 $5\times 5$ 阵列，迭代 24 轮 $\text{Rnd} = \iota \circ \chi \circ \pi \circ \rho \circ \theta$ |
-| **Algorithm 8** | Section 4 | $\text{SPONGE}[f, pad, r](N, d)$ | [`keccak_sponge`](file://./sha3_demo.py#L427) | **海绵构造驱动器**：管理任意输入的分块吸收（Absorb）与多块长流挤压（Squeeze） |
-| **Algorithm 9** | Section 5.1 | $pad10^*1(x, m)$ | [`pad10star1`](file://./sha3_demo.py#L389) | **多速率填充规则**：向填充区填充 $10^*1$ 模式比特串（在字节粒度配合域分离后缀生成） |
+| 算法编号        | FIPS 202 章节 | 官方函数名称                     | 对应实现函数                                                                                     | 核心功能与密码学意图                                                                                                               |
+|:----------------|:--------------|:---------------------------------|:-------------------------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------|
+| **Algorithm 1** | Section 3.2.1 | $\theta(A)$                      | [`step_theta`](file://./sha3_demo.py#L277)                                                       | **列混合线性扩散**：计算每列校验位 $C[x]$ 并计算 $D[x]$ 扩散至全平面，提供跨 Sheet 的雪崩扩散                                      |
+| **Algorithm 2** | Section 3.2.2 | $\rho(A)$                        | [`step_rho`](file://./sha3_demo.py#L295)                                                         | **通道内循环移位**：按预计算三角形偏置矩阵 $r[x][y]$ 循环左移通道字，提供位切片间混淆                                              |
+| **Algorithm 3** | Section 3.2.3 | $\pi(A)$                         | [`step_pi`](file://./sha3_demo.py#L307)                                                          | **坐标空间置换**：按矩阵变换 $(x, y) \to (y, (2x+3y)\bmod 5)$ 置换通道，防止活动位局部化                                           |
+| **Algorithm 4** | Section 3.2.4 | $\chi(A)$                        | [`step_chi`](file://./sha3_demo.py#L321)                                                         | **行非线性映射**：$A'[x] = A[x] \oplus (\neg A[x+1] \land A[x+2])$，全算法**唯一的非线性 S-Box 层**                                |
+| **Algorithm 5** | Section 3.2.5 | $rc(t)$                          | [`rc_lfsr`](file://./sha3_demo.py#L121) / [`compute_round_constant`](file://./sha3_demo.py#L160) | **轮常数比特发生器**：基于本原多项式 $x^8+x^6+x^5+x^4+1$ 的 8 级 LFSR 动态生成单比特常数并组装 64 位常数                           |
+| **Algorithm 6** | Section 3.2.5 | $\iota(A, i_r)$                  | [`step_iota`](file://./sha3_demo.py#L337)                                                        | **轮常数注入映射**：将由 $rc(t)$ 组装的 64 位常数异或注入原点通道 $A[0][0]$，打破轮对称性                                          |
+| **Algorithm 7** | Section 3.3   | $\text{KECCAK-}p[b, n_r](S)$     | [`keccak_f1600`](file://./sha3_demo.py#L375)                                                     | **完整置换**：将 200 字节状态映射为 $5\times 5$ 阵列，迭代 24 轮 $\text{Rnd} = \iota \circ \chi \circ \pi \circ \rho \circ \theta$ |
+| **Algorithm 8** | Section 4     | $\text{SPONGE}[f, pad, r](N, d)$ | [`keccak_sponge`](file://./sha3_demo.py#L427)                                                    | **海绵构造驱动器**：管理任意输入的分块吸收（Absorb）与多块长流挤压（Squeeze）                                                      |
+| **Algorithm 9** | Section 5.1   | $pad10^*1(x, m)$                 | [`pad10star1`](file://./sha3_demo.py#L389)                                                       | **多速率填充规则**：向填充区填充 $10^*1$ 模式比特串（在字节粒度配合域分离后缀生成）                                                |
 
 > **关键勘误与设计细节说明**：
 > 初读 FIPS PUB 202 时极易误以为 5 个步映射依次对应 Algorithm 1 ~ 5，从而误把 $\iota$ 当作 Algorithm 5。但实际上，FIPS 202 规范在第 3.2.5 节先将 LFSR 轮常数比特生成过程独立定义为 **Algorithm 5: $rc(t)$**，随后才将利用该常数对通道 $A[0][0]$ 执行异或注入的步映射定义为 **Algorithm 6: $\iota(A, i_r)$**。因此代码与文档中均严格标注 $\iota$ 为 Algorithm 6。
@@ -553,17 +553,17 @@ python verify_sha3.py
 
 这里的“字”是固定宽度的整数；一个消息分组包含 16 个字。Python 整数没有固定宽度，因此每次加法后使用掩码保留低位，实现模加法。
 
-| 参数 | BLAKE2b | BLAKE2s |
-| :--- | :--- | :--- |
-| 字长 | 64 位 | 32 位 |
-| 分组长度 | 128 字节 | 64 字节 |
-| 持续保存的哈希状态 | 8 个 64 位字 | 8 个 32 位字 |
-| 每次压缩的轮数 | 12 | 10 |
-| 摘要长度 | 1～64 字节，默认 64 | 1～32 字节，默认 32 |
-| 密钥长度 | 0～64 字节，0 表示无密钥 | 0～32 字节，0 表示无密钥 |
-| 累计字节计数器 | 128 位 | 64 位 |
-| G 函数的循环右移位数 | 32、24、16、63 | 16、12、8、7 |
-| 消息字与摘要的端序 | 小端序 | 小端序 |
+| 参数                 | BLAKE2b                  | BLAKE2s                  |
+|:---------------------|:-------------------------|:-------------------------|
+| 字长                 | 64 位                    | 32 位                    |
+| 分组长度             | 128 字节                 | 64 字节                  |
+| 持续保存的哈希状态   | 8 个 64 位字             | 8 个 32 位字             |
+| 每次压缩的轮数       | 12                       | 10                       |
+| 摘要长度             | 1～64 字节，默认 64      | 1～32 字节，默认 32      |
+| 密钥长度             | 0～64 字节，0 表示无密钥 | 0～32 字节，0 表示无密钥 |
+| 累计字节计数器       | 128 位                   | 64 位                    |
+| G 函数的循环右移位数 | 32、24、16、63           | 16、12、8、7             |
+| 消息字与摘要的端序   | 小端序                   | 小端序                   |
 
 输出长度在初始化时参与计算。因此，`blake2b(message, digest_size=16)` 与 `blake2b(message)[:16]` 是不同的计算方式。BLAKE2 的可选摘要长度也有上限，不是 SHAKE 那样的可扩展输出函数。
 
@@ -576,12 +576,12 @@ python verify_sha3.py
 5. **更新持续状态**：将原哈希状态与临时工作状态的前后两半异或，得到下一块的输入状态。
 6. **完成最后一块**：设置最终分组标志，再进行压缩。将最终状态按小端序序列化，取所要求的摘要字节数。
 
-| RFC 7693 章节 | 对应代码 | 阅读重点 |
-| :--- | :--- | :--- |
-| 2.5～2.7 | 参数字、`INITIAL_VECTOR`、`MESSAGE_SCHEDULE` | 初始参数、常数与消息字排列 |
-| 3.1 | `mix_words`、`rotate_right_64` / `rotate_right_32` | 四个工作字与两个消息字如何混合 |
-| 3.2 | `compress_block` | 计数器、最终标志、列与对角线混合、状态更新 |
-| 3.3 | `blake2b` / `blake2s` | 密钥分组、消息分块、最后一块与摘要输出 |
+| RFC 7693 章节 | 对应代码                                           | 阅读重点                                   |
+|:--------------|:---------------------------------------------------|:-------------------------------------------|
+| 2.5～2.7      | 参数字、`INITIAL_VECTOR`、`MESSAGE_SCHEDULE`       | 初始参数、常数与消息字排列                 |
+| 3.1           | `mix_words`、`rotate_right_64` / `rotate_right_32` | 四个工作字与两个消息字如何混合             |
+| 3.2           | `compress_block`                                   | 计数器、最终标志、列与对角线混合、状态更新 |
+| 3.3           | `blake2b` / `blake2s`                              | 密钥分组、消息分块、最后一块与摘要输出     |
 
 ### 3. 最后一块、空消息与密钥的边界情况
 
@@ -595,16 +595,16 @@ BLAKE2 通过**累计字节数与最终分组标志**区分消息的实际长度
 
 ### 4. 与 SHA-256、SHA-512 的对比
 
-| 对比维度 | BLAKE2s / BLAKE2b | SHA-256 / SHA-512 |
-| :--- | :--- | :--- |
-| 字长与分组 | 分别为 32 位/64 字节、64 位/128 字节 | 对应相同 |
-| 初始常数 | 复用对应 SHA-2 的 IV，再注入参数字 | 使用各自的 IV |
-| 消息调度 | 每轮排列原来的 16 个消息字 | 扩展为 64 或 80 个调度字 |
-| 压缩轮数 | 10 或 12 轮，每轮 8 次 G | 64 或 80 轮，轮结构不同 |
-| 字节顺序 | 小端序 | 大端序 |
-| 消息结束处理 | 补零、字节计数器、最终标志 | 追加 1 比特、零和消息比特长度字段 |
-| 输出长度 | 初始化时指定，范围内可选 | 固定为 32 或 64 字节 |
-| 带密钥认证 | 内置 keyed hashing | 通常使用 HMAC 构造 |
+| 对比维度     | BLAKE2s / BLAKE2b                    | SHA-256 / SHA-512                 |
+|:-------------|:-------------------------------------|:----------------------------------|
+| 字长与分组   | 分别为 32 位/64 字节、64 位/128 字节 | 对应相同                          |
+| 初始常数     | 复用对应 SHA-2 的 IV，再注入参数字   | 使用各自的 IV                     |
+| 消息调度     | 每轮排列原来的 16 个消息字           | 扩展为 64 或 80 个调度字          |
+| 压缩轮数     | 10 或 12 轮，每轮 8 次 G             | 64 或 80 轮，轮结构不同           |
+| 字节顺序     | 小端序                               | 大端序                            |
+| 消息结束处理 | 补零、字节计数器、最终标志           | 追加 1 比特、零和消息比特长度字段 |
+| 输出长度     | 初始化时指定，范围内可选             | 固定为 32 或 64 字节              |
+| 带密钥认证   | 内置 keyed hashing                   | 通常使用 HMAC 构造                |
 
 共享字长、分组长度和 IV 不意味着产生相同摘要；不同结构的轮数也不能直接比较安全性。演示脚本打印同一文本的 BLAKE2 与对应 SHA-2 摘要，便于观察输出。
 
@@ -689,15 +689,15 @@ Both [`chacha20_poly1305_demo.py`](chacha20_poly1305_demo.py) and [`gcm_demo.py`
 
 ### 1. High-Level Architectural Comparison
 
-| Feature | ChaCha20-Poly1305 ([`chacha20_poly1305_demo.py`](chacha20_poly1305_demo.py)) | AES-GCM ([`gcm_demo.py`](gcm_demo.py)) |
-| :--- | :--- | :--- |
-| **Standard** | RFC 8439 | NIST SP 800-38D |
-| **Key Sizes** | Fixed **256-bit** (32 bytes) (`KEY_BYTES`) | **128, 192, or 256-bit** (16, 24, 32 bytes) (`VALID_KEY_LENGTHS_BYTES`) |
-| **Nonce (IV) Size** | Fixed **96-bit** (12 bytes) (`NONCE_BYTES`) | **96-bit recommended**; arbitrary non-empty up to $2^{64}-1$ bits supported via GHASH (`initial_counter`) |
-| **Cipher Block Size** | **64 bytes** (512 bits) per counter (`BLOCK_BYTES`) | **16 bytes** (128 bits) per counter (`BLOCK_BYTES`) |
-| **Max Payload Size** | $(2^{32}-1) \times 64 \approx \mathbf{256\text{ GiB}}$ (`MAX_PAYLOAD_BYTES`) | $2^{39}-256\text{ bits} \approx \mathbf{64\text{ GiB}}$ (`MAX_PLAINTEXT_BYTES`) |
-| **Endianness** | **Little-endian** throughout | **Big-endian** (with reversed bit-order in $\text{GF}(2^{128})$) |
-| **Dependencies** | 100% pure Python (no external libraries) | Uses `cryptography` for raw AES block encryption (`aes_block`) |
+| Feature               | ChaCha20-Poly1305 ([`chacha20_poly1305_demo.py`](chacha20_poly1305_demo.py)) | AES-GCM ([`gcm_demo.py`](gcm_demo.py))                                                                    |
+|:----------------------|:-----------------------------------------------------------------------------|:----------------------------------------------------------------------------------------------------------|
+| **Standard**          | RFC 8439                                                                     | NIST SP 800-38D                                                                                           |
+| **Key Sizes**         | Fixed **256-bit** (32 bytes) (`KEY_BYTES`)                                   | **128, 192, or 256-bit** (16, 24, 32 bytes) (`VALID_KEY_LENGTHS_BYTES`)                                   |
+| **Nonce (IV) Size**   | Fixed **96-bit** (12 bytes) (`NONCE_BYTES`)                                  | **96-bit recommended**; arbitrary non-empty up to $2^{64}-1$ bits supported via GHASH (`initial_counter`) |
+| **Cipher Block Size** | **64 bytes** (512 bits) per counter (`BLOCK_BYTES`)                          | **16 bytes** (128 bits) per counter (`BLOCK_BYTES`)                                                       |
+| **Max Payload Size**  | $(2^{32}-1) \times 64 \approx \mathbf{256\text{ GiB}}$ (`MAX_PAYLOAD_BYTES`) | $2^{39}-256\text{ bits} \approx \mathbf{64\text{ GiB}}$ (`MAX_PLAINTEXT_BYTES`)                           |
+| **Endianness**        | **Little-endian** throughout                                                 | **Big-endian** (with reversed bit-order in $\text{GF}(2^{128})$)                                          |
+| **Dependencies**      | 100% pure Python (no external libraries)                                     | Uses `cryptography` for raw AES block encryption (`aes_block`)                                            |
 
 ### 2. Encryption Layer: ChaCha20 vs. AES-CTR
 
@@ -767,3 +767,145 @@ python3 verify_chacha20_poly1305.py
 python3 gcm_demo.py
 python3 gcm_demo.py --self-test
 ```
+
+
+## DES & SM4 Block Ciphers: Balanced vs. Unbalanced Feistel Networks
+
+[`des_demo.py`](des_demo.py) (FIPS PUB 46-3) and [`sm4_demo.py`](sm4_demo.py) (GM/T 0002-2012 / GB/T 32907-2016) provide pure-Python educational implementations of the **DES** and **SM4** block ciphers using only primitive data types (`int`, `list`, `str`) with full intermediate round-state tracing.
+
+```sh
+# Run DES demonstration (16-round Balanced Feistel Network)
+python des_demo.py
+
+# Run SM4 demonstration (32-round Unbalanced Feistel Network)
+python sm4_demo.py
+```
+
+---
+
+### 1. What is a Balanced Feistel Network (DES)?
+
+A **Feistel network** (named after IBM cryptographer Horst Feistel) is a symmetric construction that turns **any function $F$—even a non-invertible, one-way function—into an invertible permutation**, allowing encryption and decryption to share the exact same circuit and code.
+
+In [`des_demo.py`](des_demo.py), a 64-bit block (after Initial Permutation `IP`) is split into two equal 32-bit halves: **Left ($L_0$)** and **Right ($R_0$)**. In each round $i$ ($1 \dots 16$), the state is updated using the Feistel function $F$ and a 48-bit round subkey $K_i$:
+
+$$L_i = R_{i-1}$$
+$$R_i = L_{i-1} \oplus F(R_{i-1}, K_i)$$
+
+```
+      L_{i-1}                   R_{i-1}
+         │                         │
+         │          ┌─────────┐    ├─────────┐
+         ▼          │         │    │         │
+       ( ⊕ ) ◄──────┤ F(R, K) │◄───┘         │
+         │          │   ▲     │              │
+         │          └───┼─────┘              │
+         │              │ K_i                │
+         │                                   │
+         └─────────────────────┐             │
+                               │   ┌─────────┘
+                               ▼   ▼
+                              L_i, R_i
+```
+
+#### Why $F$ Does Not Need to Be Invertible
+In DES, `feistel()` expands 32 bits to 48 bits (`E`), XORs the subkey, and compresses 48 bits back down to 32 bits via 8 S-boxes. Many 48-bit inputs map to the same 32-bit output, so `feistel()` itself cannot be inverted. Yet every round is trivially reversible because **$R_{i-1}$ passes through untouched to become $L_i$**:
+1. Given $(L_i, R_i)$, we already have $R_{i-1} = L_i$ in the clear.
+2. We evaluate the **forward** function $F(L_i, K_i) = F(R_{i-1}, K_i)$ and XOR it with $R_i$:
+   $$R_i \oplus F(L_i, K_i) = \big(L_{i-1} \oplus F(R_{i-1}, K_i)\big) \oplus F(R_{i-1}, K_i) = L_{i-1}$$
+
+#### Step-by-Step DES Decryption Trace (Why the Final Swap $R_{16} \parallel L_{16}$ Exists)
+After Round 16, DES swaps the two halves into $(R_{16}, L_{16})$ before applying the Final Permutation ($\text{FP} = \text{IP}^{-1}$). Feeding the ciphertext into the exact same [`des_process_block`](des_demo.py) function with reversed subkeys ($K_{16} \dots K_1$) produces a mirror-image trace:
+
+| Decryption Step               | Algebraic State $(L^{\text{dec}}, R^{\text{dec}})$                                                    | Hex Output in [`des_demo.py`](des_demo.py) | Matches Encryption State                            |
+|:------------------------------|:------------------------------------------------------------------------------------------------------|:-------------------------------------------|:----------------------------------------------------|
+| **Input (After IP)**          | $(R_{16},\ L_{16})$                                                                                   | `L0 = 0A4CD995, R0 = 43423234`             | Swapped Round 16 output                             |
+| **Round 1 Output** ($K_{16}$) | $L_1^{\text{dec}} = L_{16} = R_{15}$<br>$R_1^{\text{dec}} = R_{16} \oplus F(L_{16}, K_{16}) = L_{15}$ | `L1 = 43423234, R1 = C28C960D`             | Swapped Round 15 (`L15 = C28C960D, R15 = 43423234`) |
+| **Round 2 Output** ($K_{15}$) | $(R_{14},\ L_{14})$                                                                                   | `L2 = C28C960D, R2 = 18C3155A`             | Swapped Round 14 (`L14 = 18C3155A, R14 = C28C960D`) |
+| $\vdots$                      | $\vdots$                                                                                              | $\vdots$                                   | $\vdots$                                            |
+| **Round 15 Output** ($K_2$)   | $(R_1,\ L_1)$                                                                                         | `L15 = EF4A6544, R15 = F0AAF0AA`           | Swapped Round 1 (`L1 = F0AAF0AA, R1 = EF4A6544`)    |
+| **Round 16 Output** ($K_1$)   | $(R_0,\ L_0)$                                                                                         | `L16 = F0AAF0AA, R16 = CC00CCFF`           | Swapped IP output (`L0 = CC00CCFF, R0 = F0AAF0AA`)  |
+| **Final Swap** (`R + L`)      | $(L_0,\ R_0)$                                                                                         | `R16\|\|L16 = CC00CCFFF0AAF0AA`            | Exact `IP(Plaintext)`                               |
+| **Final Permutation** (`FP`)  | $\text{FP}(L_0, R_0) = \text{FP}(\text{IP}(P)) = P$                                                   | `0123456789ABCDEF`                         | Original Plaintext                                  |
+
+---
+
+### 2. How SM4's Unbalanced Feistel Network Works
+
+Unlike DES (which splits a block into **2 equal halves**), SM4 uses a **4-branch Unbalanced (Generalized) Feistel Network** (an expanding/contracting shift-register structure):
+- The 128-bit block is split into **four 32-bit words**: $(X_0, X_1, X_2, X_3)$.
+- In each round $i \in \{0, \dots, 31\}$, **three words (96 bits)**—$X_{i+1}, X_{i+2}, X_{i+3}$—are XORed together with the 32-bit round key $rk_i$ and passed into the composite round function $T(\cdot) = L(\tau(\cdot))$.
+- The 32-bit output of $T$ masks the remaining **one word (32 bits)**, $X_i$, to produce the new word $X_{i+4}$:
+
+$$X_{i+4} = X_i \oplus T(X_{i+1} \oplus X_{i+2} \oplus X_{i+3} \oplus rk_i)$$
+
+```
+   X_i           X_{i+1}       X_{i+2}       X_{i+3}
+    │               │             │             │
+    │               ├──────┐      ├──────┐      ├──────┐
+    │               │      ▼      │      ▼      │      ▼
+    │               │    ( ⊕ ) ◄──┘    ( ⊕ ) ◄──┘    ( ⊕ ) ◄── rk_i
+    │               │      │             │             │
+    │               │      └─────────────┴──────┐      │
+    │               │                           ▼      │
+    │               │                      ┌─────────┐ │
+    ▼               │                      │  T(.)   │ │
+  ( ⊕ ) ◄───────────┼──────────────────────┤ L(τ(.)) │ │
+    │               │                      └─────────┘ │
+    │               ▼             ▼                    ▼
+    └────────────► X_{i+4} (new rightmost word; X_{i+1}, X_{i+2}, X_{i+3} shift left untouched!)
+```
+
+Because only **one 32-bit word (1/4 of the 128-bit block)** is updated per round, it takes **4 rounds** for SM4 to modify every bit of the block once (equivalent to 1 full SPN round in AES or 2 rounds in DES). That is why SM4 runs **32 rounds** ($32 / 4 = 8$ full-block cycles, identical to DES's $16 / 2 = 8$ full-block cycles).
+
+---
+
+### 3. Why SM4 Decryption Reuses the Exact Encryption Circuit
+
+Look at the state transition in Round $i$:
+$$(X_i,\ X_{i+1},\ X_{i+2},\ X_{i+3}) \longrightarrow (X_{i+1},\ X_{i+2},\ X_{i+3},\ X_{i+4})$$
+
+Notice that **$X_{i+1}, X_{i+2}, X_{i+3}$ pass into the next state completely unmodified!**
+
+After Round 31 (the 32nd round), the state register holds $(X_{32}, X_{33}, X_{34}, X_{35})$, where:
+$$X_{35} = X_{31} \oplus T(X_{32} \oplus X_{33} \oplus X_{34} \oplus rk_{31})$$
+
+Before outputting the ciphertext, SM4 applies the **Reverse Transformation $R$**, reversing the order of the four words:
+$$\text{Ciphertext} = R(X_{32}, X_{33}, X_{34}, X_{35}) = (X_{35},\ X_{34},\ X_{33},\ X_{32})$$
+
+When we feed $(X_{35}, X_{34}, X_{33}, X_{32})$ directly into the **exact same encryption function** [`sm4_crypt_block`](sm4_demo.py) with the round keys reversed ($rk_{31}, rk_{30}, \dots, rk_0$):
+
+1. **Decryption Round 0** (with $rk_{31}$):
+   - Input state: $(X_{35},\ X_{34},\ X_{33},\ X_{32})$.
+   - The right three words are $X_{34}, X_{33}, X_{32}$. Because **XOR is commutative and associative**,
+     $$X_{34} \oplus X_{33} \oplus X_{32} = X_{32} \oplus X_{33} \oplus X_{34}$$
+   - Therefore, $T(X_{34} \oplus X_{33} \oplus X_{32} \oplus rk_{31})$ produces the **exact same 32-bit value** (`138D5078`) as Encryption Round 31!
+   - XORing that with the leftmost word $X_{35}$ cancels out $T$ and recovers $X_{31}$:
+     $$X_{35} \oplus T(X_{34} \oplus X_{33} \oplus X_{32} \oplus rk_{31}) = X_{31}$$
+   - New state after shifting left: $(X_{34},\ X_{33},\ X_{32},\ X_{31})$.
+
+2. **Decryption Round 1** (with $rk_{30}$):
+   - Input state: $(X_{34},\ X_{33},\ X_{32},\ X_{31})$ $\longrightarrow$ recovers $X_{30}$, shifting to $(X_{33},\ X_{32},\ X_{31},\ X_{30})$.
+
+3. **Decryption Round 31** (with $rk_0$):
+   - Input state: $(X_4,\ X_3,\ X_2,\ X_1)$ $\longrightarrow$ recovers $X_0$, shifting to $(X_3,\ X_2,\ X_1,\ X_0)$.
+
+4. **Final Reverse Transformation $R$**:
+   $$R(X_3,\ X_2,\ X_1,\ X_0) = (X_0,\ X_1,\ X_2,\ X_3) = \text{Original Plaintext!}$$
+
+---
+
+### 4. Thorough Comparison: DES vs. AES vs. SM4
+
+| Feature                          | DES (FIPS 46-3, 1977)                                                                             | AES (FIPS 197, 2001)                                                                             | SM4 (GM/T 0002-2012, 2006/2012)                                                                                                                |
+|:---------------------------------|:--------------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------|
+| **Network Architecture**         | **Balanced Feistel Network** (2 branches of 32 bits)                                              | **Substitution-Permutation Network (SPN)** (4×4 byte matrix)                                     | **Unbalanced Feistel Network** (4 branches of 32 bits)                                                                                         |
+| **Block Size**                   | 64 bits (8 bytes)                                                                                 | 128 bits (16 bytes)                                                                              | 128 bits (16 bytes)                                                                                                                            |
+| **Key Size**                     | 56 bits effective (+ 8 parity bits)                                                               | 128, 192, or 256 bits                                                                            | 128 bits                                                                                                                                       |
+| **Number of Rounds**             | 16 rounds (8 full-block updates)                                                                  | 10, 12, or 14 rounds (10–14 full-block updates)                                                  | 32 rounds (8 full-block updates; 32 bits updated/round)                                                                                        |
+| **Round Key Size**               | Sixteen 48-bit subkeys                                                                            | Eleven to fifteen 128-bit round keys                                                             | Thirty-two 32-bit round keys                                                                                                                   |
+| **Decryption Datapath**          | **Identical to Encryption** (reverse subkeys $K_{16}\dots K_1$)                                   | **Different from Encryption** (requires `InvSubBytes`, `InvShiftRows`, `InvMixColumns`)          | **Identical to Encryption** (reverse round keys $rk_{31}\dots rk_0$)                                                                           |
+| **Non-Linear Layer (Confusion)** | **8 distinct S-boxes** (6-bit $\to$ 4-bit), combinatorially chosen lookup tables                  | **1 S-box** (8-bit $\to$ 8-bit), $GF(2^8)$ inverse $\pmod{\text{0x11B}}$ + affine map            | **1 S-box** (8-bit $\to$ 8-bit), $GF(2^8)$ inverse $\pmod{\text{0x1F5}}$ + pre/post affine maps                                                |
+| **Linear Layer (Diffusion)**     | Bit-level permutations (`E`, `P`, `IP`, `FP`); optimal for 1970s hardware wires, slow in software | `ShiftRows` + `MixColumns` (matrix multiplication over $GF(2^8)$); branch number = 5             | Pure 32-bit XOR + rotations: $L(B) = B \oplus (B \lll 2) \oplus (B \lll 10) \oplus (B \lll 18) \oplus (B \lll 24)$; branch number = 5          |
+| **Key Schedule Structure**       | Bit-selection (`PC-1`, `PC-2`) and circular left shifts (`SHIFTS`)                                | Byte rotations (`RotWord`), S-box (`SubWord`), and `Rcon` XORs                                   | **Same 4-branch Unbalanced Feistel structure as encryption**, using $L'(B) = B \oplus (B \lll 13) \oplus (B \lll 23)$ and constants `FK`, `CK` |
+| **Hardware/Software Footprint**  | Tiny in hardware (wire crossings are free), awkward in software                                   | Fast in software/hardware, but needs separate encrypt/decrypt circuits (~2× area if both needed) | Extremely compact: single 8-bit S-box, 32-bit word rotations, and shared encrypt/decrypt/key-schedule structure                                |
