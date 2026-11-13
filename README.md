@@ -1,5 +1,81 @@
 # AES-256 CTR、ECB、CBC、CFB 与 OFB 教学
 
+## Secret-key and public-key cryptography
+
+The main difference is **which keys are used and who may know them**.
+
+|                 | Secret-key cryptography (symmetric)       | Public-key cryptography (asymmetric)                                  |
+|-----------------|-------------------------------------------|-----------------------------------------------------------------------|
+| Keys            | A shared secret key                       | A mathematically related public/private key pair                      |
+| Who knows them? | Communicating parties know the secret key | Anyone may know the public key; only its owner knows the private key  |
+| Examples        | AES, ChaCha20                             | RSA, elliptic-curve schemes                                           |
+| Typical uses    | Encrypting data, message authentication   | Establishing shared keys, digital signatures, some encryption schemes |
+| Performance     | Generally fast                            | Generally more computationally expensive                              |
+
+### Secret-key encryption
+
+Alice and Bob share a secret key `K`:
+
+```text
+Alice: plaintext  -- Encrypt with K --> ciphertext
+Bob:   ciphertext -- Decrypt with K --> plaintext
+```
+
+AES works this way. Although encryption and decryption apply different
+operations, they use the **same secret key**.
+
+The challenge is establishing that shared secret securely before communicating.
+
+### Public-key encryption
+
+Bob generates two keys:
+
+- **Public key:** he distributes it.
+- **Private key:** he keeps it secret.
+
+Alice can encrypt a message using Bob's public key. Bob decrypts it using his
+private key:
+
+```text
+Alice: plaintext  -- Encrypt with Bob's public key --> ciphertext
+Bob:   ciphertext -- Decrypt with Bob's private key --> plaintext
+```
+
+Knowing the public key should not make recovering the private key
+computationally feasible.
+
+Alice must still establish that the public key **really belongs to Bob**.
+Otherwise, an attacker could substitute their own public key.
+
+### Other public-key operations
+
+Not every public-key algorithm provides encryption:
+
+- **Key agreement:** Alice and Bob establish a shared secret over a public
+  channel—for example, using Diffie–Hellman.
+- **Digital signatures:** Bob signs using his private key; others verify using
+  his public key. A signature is not generally "encryption with the private key."
+
+### Using both together
+
+Practical systems commonly use public-key cryptography to establish and
+authenticate shared keys, then symmetric cryptography to protect the actual
+data:
+
+```text
+Public-key cryptography --> establish shared secret
+                                  |
+                                  v
+                         derive symmetric keys
+                                  |
+                                  v
+                     encrypt data using AES-GCM
+                     or ChaCha20-Poly1305
+```
+
+This combines public-key cryptography's key-establishment capabilities with
+symmetric cryptography's efficiency.
+
 ## HMAC construction (RFC 2104)
 
 [`hmac_demo.py`](hmac_demo.py) contains the complete HMAC construction, console
