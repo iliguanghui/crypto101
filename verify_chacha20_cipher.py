@@ -4,16 +4,16 @@ Run: python verify_chacha20_cipher.py
 Source: https://datatracker.ietf.org/doc/html/rfc7539#section-2.4.2
 """
 
-import struct
+
 
 MASK = 0xFFFFFFFF
 
 
-def rotl32(x, n):
+def rotl32(x: int, n: int) -> int:
     return ((x << n) | (x >> (32 - n))) & MASK
 
 
-def quarter_round(s, ai, bi, ci, di):
+def quarter_round(s: list[int], ai: int, bi: int, ci: int, di: int) -> None:
     a, b, c, d = (s[i] for i in (ai, bi, ci, di))
     a = (a + b) & MASK
     d = rotl32(d ^ a, 16)
@@ -26,12 +26,15 @@ def quarter_round(s, ai, bi, ci, di):
     s[ai], s[bi], s[ci], s[di] = a, b, c, d
 
 
-def chacha20_block(key, counter, nonce):
+def chacha20_block(key: bytes, counter: int, nonce: bytes) -> bytes:
     # Decode the constants, key, and nonce as little-endian 32-bit words.
-    state = list(struct.unpack('<4I', b'expand 32-byte k'))
-    state += list(struct.unpack('<8I', key))
+    if len(key) != 32 or len(nonce) != 12:
+        raise ValueError('key must be 32 bytes and nonce must be 12 bytes')
+    constants = b'expand 32-byte k'
+    state = [int.from_bytes(constants[i:i + 4], 'little') for i in range(0, 16, 4)]
+    state += [int.from_bytes(key[i:i + 4], 'little') for i in range(0, 32, 4)]
     state += [counter]
-    state += list(struct.unpack('<3I', nonce))
+    state += [int.from_bytes(nonce[i:i + 4], 'little') for i in range(0, 12, 4)]
     working = state.copy()
 
     for _ in range(10):  # Each iteration performs two rounds.
@@ -47,10 +50,12 @@ def chacha20_block(key, counter, nonce):
         quarter_round(working, 3, 4, 9, 14)
 
     final = [(x + y) & MASK for x, y in zip(state, working)]
-    return struct.pack('<16I', *final)
+    return b''.join(word.to_bytes(4, 'little') for word in final)
 
 
-def chacha20_encrypt(key, counter, nonce, plaintext):
+def chacha20_encrypt(
+    key: bytes, counter: int, nonce: bytes, plaintext: bytes
+) -> bytes:
     ciphertext = bytearray()
     for offset in range(0, len(plaintext), 64):
         keystream = chacha20_block(key, counter + offset // 64, nonce)
