@@ -27,6 +27,9 @@ Test: python3 verify_chacha20_poly1305.py
 """
 
 from hmac import compare_digest  # Constant-time comparison to prevent timing side-channel attacks
+from typing import List, Tuple, Union
+
+ByteInput = Union[bytes, bytearray]
 
 # --- Cryptographic Constants (RFC 8439) ---
 KEY_BYTES = 32  # 256-bit key (used for both ChaCha20 and Poly1305)
@@ -40,14 +43,14 @@ POLY1305_MODULUS = (1 << 130) - 5  # Prime modulus 2^130 - 5 for Poly1305 field 
 CLAMP_MASK = 0x0ffffffc0ffffffc0ffffffc0fffffff  # Clears 22 specific bits of Poly1305's 'r' parameter
 
 
-def byte_input(value, name):
+def byte_input(value: object, name: str) -> bytes:
     """Ensure the input is a byte-like object and convert it to immutable bytes."""
     if not isinstance(value, (bytes, bytearray)):
         raise TypeError(f"{name} must be bytes or bytearray")
     return bytes(value)
 
 
-def validate_key_nonce(key, nonce):
+def validate_key_nonce(key: ByteInput, nonce: ByteInput) -> Tuple[bytes, bytes]:
     """Validate that the key is 32 bytes (256 bits) and nonce is 12 bytes (96 bits)."""
     key, nonce = byte_input(key, "key"), byte_input(nonce, "nonce")
     if len(key) != KEY_BYTES or len(nonce) != NONCE_BYTES:
@@ -55,12 +58,12 @@ def validate_key_nonce(key, nonce):
     return key, nonce
 
 
-def rotate_left(word, distance):
+def rotate_left(word: int, distance: int) -> int:
     """Perform a 32-bit circular left shift (rotation) by 'distance' bits."""
     return ((word << distance) | (word >> (32 - distance))) & WORD_MASK
 
 
-def quarter_round(state, first, second, third, fourth):
+def quarter_round(state: List[int], first: int, second: int, third: int, fourth: int) -> None:
     """Mix four selected words in place; addition wraps at 32 bits.
 
     This is the core ARX (Add-Rotate-XOR) primitive of ChaCha20 (RFC 8439 Section 2.1).
@@ -82,7 +85,7 @@ def quarter_round(state, first, second, third, fourth):
     state[second] = rotate_left(state[second] ^ state[third], 7)
 
 
-def check_counter(counter, length=0):
+def check_counter(counter: int, length: int = 0) -> None:
     """Ensure the 32-bit block counter is valid and will not overflow during encryption."""
     # Note: 'type(counter) is not int' rejects booleans (since bool is a subclass of int in Python).
     if type(counter) is not int:
@@ -94,7 +97,7 @@ def check_counter(counter, length=0):
         raise ValueError("Message would wrap the block counter")
 
 
-def chacha20_block(key, counter, nonce, verbose=False):
+def chacha20_block(key: ByteInput, counter: int, nonce: ByteInput, verbose: bool = False) -> bytes:
     """Return one 64-byte keystream block (RFC 8439 section 2.3).
 
     ChaCha20 state is a 4x4 matrix of sixteen 32-bit little-endian words (64 bytes total):
@@ -105,9 +108,11 @@ def chacha20_block(key, counter, nonce, verbose=False):
     """
     key, nonce = validate_key_nonce(key, nonce)
     check_counter(counter)
+
     # Helper to split a byte string into 4-byte (32-bit) little-endian unsigned integers
-    words = lambda data: [int.from_bytes(data[offset:offset + 4], "little")
-                          for offset in range(0, len(data), 4)]
+    def words(data: bytes) -> List[int]:
+        return [int.from_bytes(data[offset:offset + 4], "little") for offset in range(0, len(data), 4)]
+
     # Construct the 16-word initial state matrix
     initial = words(b"expand 32-byte k") + words(key) + [counter] + words(nonce)
     state = initial.copy()
@@ -135,7 +140,8 @@ def chacha20_block(key, counter, nonce, verbose=False):
     return block
 
 
-def chacha20(key, nonce, data, counter=1, verbose=False):
+def chacha20(key: ByteInput, nonce: ByteInput, data: ByteInput,
+             counter: int = 1, verbose: bool = False) -> bytes:
     """Encrypt or decrypt using the same XOR operation; no authentication.
 
     As a stream cipher, ChaCha20 generates a pseudorandom keystream block for each
@@ -155,7 +161,7 @@ def chacha20(key, nonce, data, counter=1, verbose=False):
     return bytes(output)  # Empty input returns empty bytes; no padding needed.
 
 
-def poly1305(one_time_key, message, verbose=False):
+def poly1305(one_time_key: ByteInput, message: ByteInput, verbose: bool = False) -> bytes:
     """Authenticate one message with a key that must never be reused.
 
     Poly1305 (RFC 8439 Section 2.5) evaluates a polynomial over the prime field
@@ -200,7 +206,7 @@ def poly1305(one_time_key, message, verbose=False):
     return tag
 
 
-def mac_input(associated_data, ciphertext):
+def mac_input(associated_data: bytes, ciphertext: bytes) -> bytes:
     """AEAD framing: pad AAD and ciphertext separately, then append lengths.
 
     RFC 8439 Section 2.8 specifies the exact byte layout fed into Poly1305:
@@ -224,7 +230,9 @@ def mac_input(associated_data, ciphertext):
             + len(ciphertext).to_bytes(8, "little"))
 
 
-def chacha20_poly1305(key, nonce, data, associated_data=b"", *, decrypt=False, verbose=False):
+def chacha20_poly1305(key: ByteInput, nonce: ByteInput, data: ByteInput,
+                      associated_data: ByteInput = b"", *, decrypt: bool = False,
+                      verbose: bool = False) -> bytes:
     """Encrypt to ciphertext || tag, or authenticate/decrypt that packet.
 
     Decryption raises ValueError on failure and never returns unverified
