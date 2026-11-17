@@ -37,7 +37,10 @@ Usage:
 import argparse
 import secrets
 from hmac import compare_digest
+from typing import Callable, Tuple, Union
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+ByteInput = Union[bytes, bytearray]
 
 BLOCK_BYTES = 16  # AES block size: 128 bits for all key sizes.
 VALID_KEY_LENGTHS_BYTES = (16, 24, 32)  # K: AES-128/192/256.
@@ -49,19 +52,19 @@ MAX_PLAINTEXT_BYTES = (1 << 36) - 32  # P: at most 2**39 - 256 bits (SP 800-38D)
 REDUCTION_POLYNOMIAL = 0xE1000000000000000000000000000000
 
 
-def byte_input(value, name):
+def byte_input(value: object, name: str) -> bytes:
     if not isinstance(value, (bytes, bytearray)):
         raise TypeError(f"{name} must be bytes or bytearray")
     return bytes(value)
 
 
-def xor_bytes(first, second):
+def xor_bytes(first: bytes, second: bytes) -> bytes:
     if len(first) != len(second):
         raise ValueError("XOR operands must have equal lengths")
     return bytes(left ^ right for left, right in zip(first, second))
 
 
-def aes_block(key, block):
+def aes_block(key: bytes, block: bytes) -> bytes:
     """Use ECB only to obtain one AES block encryption; GCM handles chaining."""
     if len(block) != BLOCK_BYTES:
         raise ValueError("AES requires exactly 16 bytes")
@@ -69,7 +72,7 @@ def aes_block(key, block):
     return encryptor.update(block) + encryptor.finalize()
 
 
-def field_multiply(first, second):
+def field_multiply(first: int, second: int) -> int:
     """Multiply two 128-bit integers in GHASH's GF(2**128).
 
     This is polynomial arithmetic: addition is XOR, not integer addition.
@@ -91,12 +94,17 @@ def field_multiply(first, second):
     return product
 
 
-def zero_pad(data):
+def zero_pad(data: bytes) -> bytes:
     """Pad a partial block with zeros; aligned and empty data add no block."""
     return data + bytes((-len(data)) % BLOCK_BYTES)
 
 
-def ghash(hash_key, associated_data, ciphertext, verbose=False):
+def ghash(
+    hash_key: bytes,
+    associated_data: bytes,
+    ciphertext: bytes,
+    verbose: bool = False,
+) -> bytes:
     """GHASH: process padded AAD, padded ciphertext, then their BIT lengths.
 
     AAD and ciphertext must be padded separately. The final 16-byte block
@@ -115,7 +123,7 @@ def ghash(hash_key, associated_data, ciphertext, verbose=False):
     return accumulator.to_bytes(BLOCK_BYTES, "big")
 
 
-def initial_counter(hash_key, nonce, verbose=False):
+def initial_counter(hash_key: bytes, nonce: bytes, verbose: bool = False) -> bytes:
     """96-bit IV: append 0^31 || 1. Otherwise hash the padded IV and its length."""
     if len(nonce) == DEFAULT_NONCE_BYTES:
         return nonce + b"\x00\x00\x00\x01"
@@ -125,13 +133,13 @@ def initial_counter(hash_key, nonce, verbose=False):
     return ghash(hash_key, b"", nonce, verbose)
 
 
-def increment_counter(counter):
+def increment_counter(counter: bytes) -> bytes:
     """Increment only the rightmost 32 bits, modulo 2**32; keep the prefix."""
     low_word = (int.from_bytes(counter[-4:], "big") + 1) & 0xFFFFFFFF
     return counter[:-4] + low_word.to_bytes(4, "big")
 
 
-def counter_transform(key, initial, data, verbose=False):
+def counter_transform(key: bytes, initial: bytes, data: bytes, verbose: bool = False) -> bytes:
     """Encrypt or decrypt by XOR; no ciphertext padding is transmitted."""
     output = bytearray()
     counter = initial
@@ -147,7 +155,12 @@ def counter_transform(key, initial, data, verbose=False):
     return bytes(output)
 
 
-def validate_inputs(key, nonce, data, associated_data):
+def validate_inputs(
+    key: ByteInput,
+    nonce: ByteInput,
+    data: ByteInput,
+    associated_data: ByteInput,
+) -> Tuple[bytes, bytes, bytes, bytes]:
     key = byte_input(key, "key")
     nonce = byte_input(nonce, "nonce")
     data = byte_input(data, "data")
@@ -161,12 +174,19 @@ def validate_inputs(key, nonce, data, associated_data):
     return key, nonce, data, associated_data
 
 
-def check_payload_length(length):
+def check_payload_length(length: int) -> None:
     if length > MAX_PLAINTEXT_BYTES:
         raise ValueError("GCM payload exceeds 2**39 - 256 bits")
 
 
-def authentication_tag(key, hash_key, initial, associated_data, ciphertext, verbose=False):
+def authentication_tag(
+    key: bytes,
+    hash_key: bytes,
+    initial: bytes,
+    associated_data: bytes,
+    ciphertext: bytes,
+    verbose: bool = False,
+) -> bytes:
     hashed = ghash(hash_key, associated_data, ciphertext, verbose)
     mask = aes_block(key, initial)
     tag = xor_bytes(hashed, mask)
@@ -176,7 +196,13 @@ def authentication_tag(key, hash_key, initial, associated_data, ciphertext, verb
     return tag
 
 
-def gcm_encrypt(key, nonce, plaintext, associated_data=b"", verbose=False):
+def gcm_encrypt(
+    key: ByteInput,
+    nonce: ByteInput,
+    plaintext: ByteInput,
+    associated_data: ByteInput = b"",
+    verbose: bool = False,
+) -> bytes:
     """Return ciphertext || 16-byte tag; caller ensures nonce uniqueness."""
     key, nonce, plaintext, associated_data = validate_inputs(key, nonce, plaintext, associated_data)
     check_payload_length(len(plaintext))
@@ -190,7 +216,12 @@ def gcm_encrypt(key, nonce, plaintext, associated_data=b"", verbose=False):
     return ciphertext + tag
 
 
-def gcm_decrypt(key, nonce, ciphertext_and_tag, associated_data=b""):
+def gcm_decrypt(
+    key: ByteInput,
+    nonce: ByteInput,
+    ciphertext_and_tag: ByteInput,
+    associated_data: ByteInput = b"",
+) -> bytes:
     """Authenticate first; return plaintext or raise ValueError without output."""
     key, nonce, packet, associated_data = validate_inputs(key, nonce, ciphertext_and_tag, associated_data)
     if len(packet) < TAG_BYTES:
@@ -205,7 +236,7 @@ def gcm_decrypt(key, nonce, ciphertext_and_tag, associated_data=b""):
     return counter_transform(key, initial, ciphertext)
 
 
-def gmac(key, nonce, message, verbose=False):
+def gmac(key: ByteInput, nonce: ByteInput, message: ByteInput, verbose: bool = False) -> bytes:
     """Return a 16-byte MAC for message; caller ensures nonce uniqueness.
 
     Empty plaintext produces empty ciphertext, so GCM's ciphertext || tag
@@ -214,7 +245,7 @@ def gmac(key, nonce, message, verbose=False):
     return gcm_encrypt(key, nonce, b"", associated_data=message, verbose=verbose)
 
 
-def verify_gmac(key, nonce, message, tag):
+def verify_gmac(key: ByteInput, nonce: ByteInput, message: ByteInput, tag: ByteInput) -> None:
     """Return None on success; raise ValueError if authentication fails."""
     tag = byte_input(tag, "tag")
     # Require exactly one tag: extra bytes must not become GCM ciphertext.
@@ -225,15 +256,15 @@ def verify_gmac(key, nonce, message, tag):
         raise ValueError("GMAC authentication failed")
 
 
-def self_test():
+def self_test() -> None:
     """Fixed proposal vectors and independent library comparisons; no network."""
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-    def check(actual, expected):
+    def check(actual: object, expected: object) -> None:
         if actual != expected:
             raise AssertionError(f"Got {actual!r}; expected {expected!r}")
 
-    def rejects(operation):
+    def rejects(operation: Callable[[], object]) -> None:
         try:
             operation()
         except (ValueError, TypeError):
@@ -290,13 +321,13 @@ def self_test():
     rejects(lambda: gcm_decrypt(key, nonce, bytes(15), aad))
     rejects(lambda: gcm_encrypt(bytes(15), nonce, b""))
     rejects(lambda: gcm_encrypt(key, b"", b""))
-    rejects(lambda: gcm_encrypt(key, nonce, "text"))
+    rejects(lambda: gcm_encrypt(key, nonce, "text"))  # type: ignore[arg-type]  # Deliberately invalid input.
     check_payload_length(MAX_PLAINTEXT_BYTES)
     rejects(lambda: check_payload_length(MAX_PLAINTEXT_BYTES + 1))
     print(f"PASS: four published vectors, {comparisons} library comparisons, counter wrap and rejection checks.")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="AES-GCM demo with intermediate values")
     parser.add_argument("--text", help="UTF-8 text; default is public specification test case 2")
     parser.add_argument("--self-test", action="store_true")
