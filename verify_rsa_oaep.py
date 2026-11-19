@@ -6,7 +6,7 @@ from typing import Callable
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-from rsa_textbook_demo import PUBLIC_EXPONENT, generate_key, rsa_decrypt, rsa_encrypt
+from rsa_oaep_demo import PUBLIC_EXPONENT, generate_key, rsa_decrypt, rsa_encrypt, validate_key
 
 OAEP = padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=b"")
 MAX_MESSAGE_BYTES = 190  # 256-byte modulus minus two SHA-256 digests and two marker bytes.
@@ -66,9 +66,64 @@ def verify_invalid_inputs(modulus: int, private_exponent: int) -> None:
                            f"invalid ciphertext: length {len(ciphertext)}, prefix {ciphertext[:2]!r}")
 
 
+def verify_labels(private_key: rsa.RSAPrivateKey) -> None:
+    numbers = private_key.private_numbers()
+    modulus = numbers.public_numbers.n
+    for label in (b"", b"application context", b"\x00\xff\x00", bytes(range(256))):
+        scheme = padding.OAEP(mgf=padding.MGF1(hashes.SHA256()),
+                              algorithm=hashes.SHA256(), label=label)
+        for message in (b"", b"\x00label test", bytes(MAX_MESSAGE_BYTES)):
+            ours = rsa_encrypt(message, modulus, PUBLIC_EXPONENT, label=label)
+            if private_key.decrypt(ours, scheme) != message:
+                raise AssertionError("Library failed to decrypt with matching label")
+            theirs = private_key.public_key().encrypt(message, scheme)
+            if rsa_decrypt(theirs, modulus, numbers.d, label=label) != message:
+                raise AssertionError("Demo failed to decrypt with matching label")
+            expect_value_error(lambda: rsa_decrypt(theirs, modulus, numbers.d, label=label + b"!"),
+                               "mismatched label")
+        # An omitted label is equivalent to an explicitly empty one.
+        if not label and rsa_decrypt(theirs, modulus, numbers.d) != message:
+            raise AssertionError("Default label differs from empty label")
+    for label in (None, "context", bytearray(b"context"), 123):
+        for operation in (lambda: rsa_encrypt(b"", modulus, PUBLIC_EXPONENT, label=label),
+                          lambda: rsa_decrypt(bytes(256), modulus, numbers.d, label=label)):
+            try:
+                operation()
+            except TypeError:
+                continue
+            raise AssertionError("Expected TypeError for non-bytes label")
+    print("[PASS] OAEP label interoperability, mismatches, default and invalid types")
+
+
+def verify_key_validation(private_key: rsa.RSAPrivateKey) -> None:
+    numbers = private_key.private_numbers()
+    modulus = numbers.public_numbers.n
+    for exponent in (numbers.public_numbers.e, numbers.d):
+        if validate_key(modulus, exponent) is not None:
+            raise AssertionError("validate_key must return None")
+    invalid_values = [(0, 3), (1, 3), (-3, 3), (modulus - 1, 3), (3233, 17)]
+    invalid_values += [(modulus, exponent) for exponent in (-3, 0, 1, 2, modulus, modulus + 2)]
+    invalid_types = [(True, 3), (str(modulus), 3), (3.0, 3),
+                     (modulus, True), (modulus, "3"), (modulus, 3.0)]
+    for cases, error_type in ((invalid_values, ValueError), (invalid_types, TypeError)):
+        for candidate_modulus, candidate_exponent in cases:
+            for operation in (
+                    lambda: validate_key(candidate_modulus, candidate_exponent),
+                    lambda: rsa_encrypt(b"", candidate_modulus, candidate_exponent),
+                    lambda: rsa_decrypt(bytes(256), candidate_modulus, candidate_exponent)):
+                try:
+                    operation()
+                except error_type:
+                    continue
+                raise AssertionError(f"Expected {error_type.__name__} for invalid OAEP key")
+    print("[PASS] OAEP key component types, parity, ranges and minimum size")
+
+
 def main() -> None:
     private_key = rsa.generate_private_key(public_exponent=PUBLIC_EXPONENT, key_size=2048)
     private_exponent = private_key.private_numbers().d
+    verify_key_validation(private_key)
+    verify_labels(private_key)
     verify_random_messages(private_key, private_exponent)
     verify_structured_messages(private_key, private_exponent)
     verify_generated_key()

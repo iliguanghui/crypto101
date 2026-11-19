@@ -1,10 +1,11 @@
-"""Trace RSA-2048 with OAEP/SHA-256. Run: python3 rsa_textbook_demo.py
+"""Trace RSA-2048 with OAEP/SHA-256. Run: python3 rsa_oaep_demo.py
 
 Teaching code: the trace reveals the OAEP seed and Python's private-key
 operations are not constant-time. Use a vetted library for real secrets.
 """
 
 from hashlib import sha256
+from hmac import compare_digest
 from math import gcd
 from secrets import randbelow, randbits, token_bytes
 from typing import Tuple
@@ -86,16 +87,16 @@ def generate_key() -> Tuple[int, int]:
     return modulus, pow(PUBLIC_EXPONENT, -1, totient)
 
 
-def mgf1(source: bytes, mask_length: int) -> bytes:
+def mgf1(seed: bytes, mask_length: int) -> bytes:
     """Generate exactly mask_length bytes with MGF1 and SHA-256."""
     if not 0 <= mask_length <= (1 << 32) * HASH_BYTES:
         raise ValueError("Mask length outside the range supported by MGF1")
     mask = bytearray()
     # One SHA-256 digest gives 32 bytes. To mask, say, 40 bytes, hash the
-    # source with counter 0 and then counter 1; use 32 + 8 bytes. Both sides
+    # seed with counter 0 and then counter 1; use 32 + 8 bytes. Both sides
     # encode each counter in four bytes so they reproduce the same mask.
     for counter in range((mask_length + HASH_BYTES - 1) // HASH_BYTES):
-        mask.extend(sha256(source + counter.to_bytes(4, "big")).digest())
+        mask.extend(sha256(seed + counter.to_bytes(4, "big")).digest())
     return bytes(mask[:mask_length])
 
 
@@ -105,8 +106,28 @@ def xor_mask(data: bytes, source: bytes) -> bytes:
     return bytes(v ^ m for v, m in zip(data, mask))
 
 
-def rsa_encrypt(message: bytes, modulus: int, public_exponent: int, verbose: bool = False) -> bytes:
+def validate_key(modulus: int, exponent: int) -> None:
+    """Check component ranges, not full RSA key validity.
+
+    Proving that n is a product of distinct primes and that d matches e
+    requires additional key material; these two integers alone cannot do that.
+    """
+    if type(modulus) is not int or type(exponent) is not int:
+        raise TypeError("RSA modulus and exponent must be integers")
+    if modulus <= 1 or modulus % 2 == 0:
+        raise ValueError("RSA modulus must be an odd integer greater than one")
+    if not 1 < exponent < modulus or exponent % 2 == 0:
+        raise ValueError("RSA exponent must be odd and satisfy 1 < exponent < modulus")
+    if (modulus.bit_length() + 7) // 8 < 2 * HASH_BYTES + 2:
+        raise ValueError("RSA modulus is too short for OAEP/SHA-256")
+
+
+def rsa_encrypt(message: bytes, modulus: int, public_exponent: int,
+                verbose: bool = False, label: bytes = b"") -> bytes:
     """Encode a byte string with OAEP, then apply the public RSA operation."""
+    validate_key(modulus, public_exponent)
+    if not isinstance(label, bytes):
+        raise TypeError("OAEP label must be bytes")
     width = (modulus.bit_length() + 7) // 8
     # OAEP fills exactly one modulus-width block. Budget one hash for the
     # label, one hash-length seed, a leading zero byte and a delimiter byte.
@@ -115,9 +136,9 @@ def rsa_encrypt(message: bytes, modulus: int, public_exponent: int, verbose: boo
     if padding_length < 0:
         raise ValueError("Message too long for this key and OAEP/SHA-256")
 
-    # Both sides agree on an optional label (empty here) and use its hash.
+    # Both sides must agree on the label; it is not included in the ciphertext.
     # Data block layout: [label hash | zero padding | 01 | original message].
-    data_block = sha256(b"").digest() + bytes(padding_length) + b"\x01" + message
+    data_block = sha256(label).digest() + bytes(padding_length) + b"\x01" + message
     seed = token_bytes(HASH_BYTES)  # Fresh randomness for every encryption.
     # Mask in two steps: the seed masks the block, then the masked block
     # masks the seed. The receiver can undo both without a separate seed.
@@ -133,7 +154,11 @@ def rsa_encrypt(message: bytes, modulus: int, public_exponent: int, verbose: boo
     return ciphertext.to_bytes(width, "big")
 
 
-def rsa_decrypt(ciphertext: bytes, modulus: int, private_exponent: int) -> bytes:
+def rsa_decrypt(ciphertext: bytes, modulus: int, private_exponent: int,
+                label: bytes = b"") -> bytes:
+    validate_key(modulus, private_exponent)
+    if not isinstance(label, bytes):
+        raise TypeError("OAEP label must be bytes")
     width = (modulus.bit_length() + 7) // 8
     value = int.from_bytes(ciphertext, "big")
     # Reject out-of-range integers rather than silently reducing them modulo n.
@@ -152,7 +177,11 @@ def rsa_decrypt(ciphertext: bytes, modulus: int, private_exponent: int) -> bytes
     # Skip padding after the label hash. The 01 delimiter stops lstrip, so
     # even a message that begins with zero bytes is recovered intact.
     tail = data_block[HASH_BYTES:].lstrip(b"\x00")
-    if encoded[0] != 0 or data_block[:HASH_BYTES] != sha256(b"").digest() or not tail.startswith(b"\x01"):
+    # Compare fixed-size hashes without data-dependent comparison timing.
+    # Padding scanning and Python's private exponentiation are still not
+    # constant-time: this does not harden the entire decryption operation.
+    label_matches = compare_digest(data_block[:HASH_BYTES], sha256(label).digest())
+    if encoded[0] != 0 or not label_matches or not tail.startswith(b"\x01"):
         raise ValueError("Invalid ciphertext")
     return tail[1:]
 

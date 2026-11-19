@@ -1,5 +1,5 @@
+""" Check certificate parameters. See https://www.rfc-editor.org/info/rfc8017/#section-5.1.2 """
 import re
-import sys
 from math import gcd
 
 
